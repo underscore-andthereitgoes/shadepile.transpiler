@@ -64,6 +64,8 @@ public enum OperatorTokenType {
       new ParseOrderItemBinary(BinaryOperator.BXOR),
       new ParseOrderItemBinary(BinaryOperator.BOR),
       new ParseOrderItemBinary(BinaryOperator.EQ, BinaryOperator.NE, BinaryOperator.GE, BinaryOperator.LE, BinaryOperator.GT, BinaryOperator.LT),
+      new ParseOrderItemBinary(BinaryOperator.AND),
+      new ParseOrderItemBinary(BinaryOperator.OR),
   };
 
   public static abstract sealed class ParseOrderItem {

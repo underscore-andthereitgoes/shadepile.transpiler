@@ -75,7 +75,7 @@ public class Block extends PositionedNode {
       if (statementLike instanceof BlockDirectiveOnly) return;
     }
     if (!(statementLike instanceof PositionedNode positionedNode)) throw new IllegalStateException();
-    if (this.returned) throw new LuaCompileError("can't do more statements after returning in a block").at(positionedNode);
+    if (this.returned) throw new LuaCompileError("can't do more statements after returning in a block" + ((statementLike instanceof Empty) ? " (even empty statements, except one semicolon after return)" : "")).at(positionedNode);
     this.statements.add(statementLike);
     if (statementLike instanceof HasChildBlock hcb) {
       hcb.getChildBlocks().forEach(childBlock -> {

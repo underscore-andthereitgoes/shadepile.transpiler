@@ -1,9 +1,9 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua.parse;
 
+import org.apache.commons.lang3.function.TriFunction;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import underscore.andthereitgoes.shadepile.transpiler.lua.TriFunction;
 import underscore.andthereitgoes.shadepile.transpiler.lua.KeywordTokenType;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.Token;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.Block;

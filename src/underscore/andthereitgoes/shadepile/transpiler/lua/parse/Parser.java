@@ -1,9 +1,14 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua.parse;
 
+import org.apache.commons.lang3.function.Functions;
+import org.apache.commons.lang3.function.TriConsumer;
+import org.apache.commons.lang3.function.TriFunction;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import underscore.andthereitgoes.shadepile.transpiler.lua.*;
+import underscore.andthereitgoes.shadepile.transpiler.lua.BinaryOperator;
+import underscore.andthereitgoes.shadepile.transpiler.lua.UnaryOperator;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.Token;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.*;
 
@@ -11,7 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.IntConsumer;
+import java.util.function.*;
 
 
 public class Parser {
@@ -96,13 +101,14 @@ public class Parser {
     final TokenFinder<Expression>[] groupexpr = new TokenFinder[1];
     final TokenFinder<Expression>[] expr = new TokenFinder[1];
     final TokenFinder<Expression>[] exprlist = new TokenFinder[1];
+    final TokenFinder<String>[] name = new TokenFinder[1];
     final TokenFinder<String>[] namelist = new TokenFinder[1];
     final TokenFinder<?>[] attr = new TokenFinder[1];
     final TokenFinder<String>[] attrnamelist = new TokenFinder[1];
-    final TokenFinder<CallInfo>[] callpath = new TokenFinder[1];
-    final TokenFinder<VariableOrPropertyAccess>[] props = new TokenFinder[1];
-    final TokenFinder<Expression>[] propsfunccall = new TokenFinder[1];
-    final TokenFinder<FunctionCall>[] funccall = new TokenFinder[1];
+    final TokenFinder<CallInfoOrPropertyPath>[] callpath = new TokenFinder[1]; // property access and/or function calls
+    final TokenFinder<Expression>[] propsfunccall = new TokenFinder[1]; // property path or function call; also includes single grouped expressions
+    final TokenFinder<VariableOrPropertyAccess>[] props = new TokenFinder[1]; // property path only
+    final TokenFinder<FunctionCall>[] funccall = new TokenFinder[1]; // function call only
     final TokenFinder<@Nullable String>[] methodsuff = new TokenFinder[1];
     final TokenFinder<CallInfo>[] funccallsuff = new TokenFinder[1];
     final TokenFinder<PropertyPath>[] propertypathsuff = new TokenFinder[1];
@@ -220,7 +226,7 @@ public class Parser {
     );
 
     s_fornum[0] = TokenFinder.ordered(
-        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.Name.class),
+        () -> (TokenFinder<Object>)(TokenFinder<?>)name[0],
         (TokenFinder<Object>)TokenFinder.ofClass(Token.SingleEquals.class).consume(),
         () -> (TokenFinder<Object>)(TokenFinder<?>)expr[0].throwing("expected start after \"for variable =\""),
         (TokenFinder<Object>)TokenFinder.ofClass(Token.Comma.class).consume().throwing("expected comma after \"for variable = start\""),
@@ -230,8 +236,7 @@ public class Parser {
           () -> (TokenFinder<Object>)(TokenFinder<?>)expr[0].throwing("expected step after \"for variable = start, stop,\"")
         ))
     ).map((tokenFinder, objects) -> {
-      Token.Name variableNameToken = (Token.Name)objects.getFirst();
-      ForNumeric s = new ForNumeric(variableNameToken.text, objects.subList(1, objects.size()).stream().map(o -> (Expression)o).toArray(Expression[]::new), tokenFinder.block);
+      ForNumeric s = new ForNumeric((String)objects.getFirst(), objects.subList(1, objects.size()).stream().map(o -> (Expression)o).toArray(Expression[]::new), tokenFinder.block);
       tokenFinder.block = s.body;
       return List.of(s);
     }).withParentsTakeContext();
@@ -259,7 +264,8 @@ public class Parser {
 
     s_return[0] = TokenFinder.ordered(
         (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.RETURN),
-        () -> (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.optional(exprlist[0]).group()
+        () -> (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.optional(exprlist[0]).group(),
+        (TokenFinder<Object>)TokenFinder.optional(TokenFinder.ofClass(Token.Semicolon.class)).consume()
     ).map((tokenFinder, objects) ->
         List.of((Return)new Return(((List<Expression>)objects.getLast()).toArray(Expression[]::new)).at((Token)objects.getFirst()))
     );
@@ -379,6 +385,91 @@ public class Parser {
         () -> propsfunccall[0],
         () -> (TokenFinder<Expression>)(TokenFinder<?>)funcexpr[0]
     );
+
+    groupexpr[0] = TokenFinder.ordered(
+        (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.LEFT).consume(),
+        () -> expr[0].throwing("expected expression after opening parenthesis"),
+        (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.RIGHT).consume().throwing("expected a closing parenthesis")
+    ).map((tokenFinder, expressions) -> List.of(new GroupingExpression(expressions.getFirst())));
+
+    expr[0] = opexpr[0]; // in the TypeScript version, logical operations are split
+
+    exprlist[0] = TokenFinder.ordered(
+        expr[0],
+        TokenFinder.zeroOrMore(TokenFinder.ordered(
+            (TokenFinder<Expression>)TokenFinder.ofClass(Token.Comma.class).consume(),
+            expr[0].throwing("expected expression after comma")
+        ))
+    );
+
+    name[0] = TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of(names.getFirst().text));
+
+    namelist[0] = TokenFinder.ordered(
+        name[0],
+        TokenFinder.zeroOrMore(TokenFinder.ordered(
+            (TokenFinder<String>)TokenFinder.ofClass(Token.Comma.class).consume(),
+            name[0]
+                .throwing("expected name after comma")
+        ))
+    );
+
+    attr[0] = TokenFinder.ordered(
+        (TokenFinder<Void>)TokenFinder.ofClassAndAlso(Token.Operator.class, operator -> operator.type == OperatorTokenType.LT).consume(),
+        (TokenFinder<Void>)TokenFinder.ofClass(Token.Name.class).consume(),
+        (TokenFinder<Void>)TokenFinder.ofClassAndAlso(Token.Operator.class, operator -> operator.type == OperatorTokenType.GT).consume()
+    ).consume();
+
+    attrnamelist[0] = TokenFinder.ordered(
+        (TokenFinder<String>)TokenFinder.optional(attr[0]),
+        name[0],
+        (TokenFinder<String>)TokenFinder.optional(attr[0]),
+        TokenFinder.zeroOrMore(TokenFinder.ordered(
+            (TokenFinder<String>)TokenFinder.ofClass(Token.Comma.class).consume(),
+            name[0],
+            (TokenFinder<String>)TokenFinder.optional(attr[0])
+        ))
+    );
+
+    callpath[0] = TokenFinder.ordered(
+        TokenFinder.firstValid(
+            () -> simplevariable[0].map((tokenFinder, list) -> List.of(new PropertyPath(list.getFirst()))),
+            () -> groupexpr[0].map((tokenFinder, list) -> List.of(new PropertyPath(list.getFirst())))
+        ),
+        TokenFinder.zeroOrMore(TokenFinder.firstValid(
+            () -> (TokenFinder<CallInfoOrPropertyPath>)(TokenFinder<?>)propertypathsuff[0],
+            () -> (TokenFinder<CallInfoOrPropertyPath>)(TokenFinder<?>)funccallsuff[0]
+        ))
+    );
+
+    final TriFunction<List<CallInfoOrPropertyPath>, Boolean, Boolean, Expression> callpathmapper = (callInfoOrPropertyPaths, allowPath, allowCall) -> {
+      if (callInfoOrPropertyPaths.isEmpty() || !(callInfoOrPropertyPaths.getFirst() instanceof PropertyPath baseExpressionPath)) throw new IllegalStateException();
+      Expression expression = baseExpressionPath.item;
+      for (int i = 1, numPieces = callInfoOrPropertyPaths.size(); i < numPieces; i++) {
+        CallInfoOrPropertyPath piece = callInfoOrPropertyPaths.get(i);
+        expression = switch (piece) {
+          case CallInfo callInfo ->
+              new FunctionCall(expression, callInfo.method, callInfo.arguments.toArray(Expression[]::new));
+          case PropertyPath propertyPath ->
+              new PropertyAccess(expression, propertyPath.item);
+          case null, default -> throw new IllegalStateException();
+        };
+      }
+      if (allowCall && allowPath) return expression;
+      if (allowCall) {
+        if (expression instanceof FunctionCall) return expression;
+      } else if (allowPath) {
+        if (expression instanceof VariableOrPropertyAccess) return expression;
+      } else throw new IllegalStateException();
+      return null;
+    };
+
+    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<Expression>> propsfunccallmapper = (_, callInfoOrPropertyPaths) -> List.of(callpathmapper.apply(callInfoOrPropertyPaths, true, true));
+    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<VariableOrPropertyAccess>> propsmapper = (_, callInfoOrPropertyPaths) -> List.of((VariableOrPropertyAccess)callpathmapper.apply(callInfoOrPropertyPaths, true, false));
+    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<FunctionCall>> funccallmapper = (_, callInfoOrPropertyPaths) -> List.of((FunctionCall)callpathmapper.apply(callInfoOrPropertyPaths, false, true));
+
+    propsfunccall[0] = callpath[0].map(propsfunccallmapper);
+    props[0] = callpath[0].map(propsmapper);
+    funccall[0] = callpath[0].map(funccallmapper);
 
   }
 }
