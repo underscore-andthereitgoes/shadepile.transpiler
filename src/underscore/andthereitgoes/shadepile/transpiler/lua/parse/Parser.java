@@ -10,11 +10,8 @@ import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.BiFunction;
+import java.util.Optional;
 import java.util.function.IntConsumer;
-import java.util.function.IntFunction;
-import java.util.function.Supplier;
 
 
 public class Parser {
@@ -285,7 +282,7 @@ public class Parser {
         (TokenFinder<StatementLike>)(TokenFinder<?>)s_break[0],
         (TokenFinder<StatementLike>)(TokenFinder<?>)s_return[0],
         () -> (TokenFinder<StatementLike>)(TokenFinder<?>)funcdec[0],
-        () -> (TokenFinder<StatementLike>)(TokenFinder<?>)globaldec[0],
+        () -> globaldec[0],
         () -> (TokenFinder<StatementLike>)(TokenFinder<?>)localdec[0],
         () -> (TokenFinder<StatementLike>)(TokenFinder<?>)assignment[0],
         () -> (TokenFinder<StatementLike>)(TokenFinder<?>)funccall[0]
@@ -366,6 +363,22 @@ public class Parser {
 
       return (List<Expression>)(List<?>)parts;
     });
+
+    term[0] = TokenFinder.firstValid(
+        TokenFinder.ofClass(Token.NilLiteral.class).map((tokenFinder, nilLiterals) -> List.of(new Literal.NilLiteral())),
+        TokenFinder.ofClass(Token.BooleanLiteral.class).map((tokenFinder, booleanLiterals) -> List.of(new Literal.BooleanLiteral(booleanLiterals.getFirst().value))),
+        TokenFinder.ofClass(Token.NumberLiteral.class).map((tokenFinder, numberLiterals) -> {
+          Number value = numberLiterals.getFirst().value;
+          if (value instanceof Double d) return List.of(new Literal.FloatLiteral(d));
+          else if (value instanceof Long l) return List.of(new Literal.IntegerLiteral(l));
+          else throw new IllegalStateException();
+        }),
+        TokenFinder.ofClass(Token.StringLiteral.class).map((tokenFinder, stringLiterals) -> List.of(new Literal.StringLiteral(stringLiterals.getFirst().value))),
+        TokenFinder.ofClass(Token.ThreeDots.class).map((tokenFinder, threeDots) -> List.of(Optional.ofNullable((Expression)tokenFinder.block.findVariable("...")).orElseThrow(() -> new LuaParseError("... is not defined in this scope")))),
+        () -> (TokenFinder<Expression>)(TokenFinder<?>)tableconstructor[0],
+        () -> propsfunccall[0],
+        () -> (TokenFinder<Expression>)(TokenFinder<?>)funcexpr[0]
+    );
 
   }
 }

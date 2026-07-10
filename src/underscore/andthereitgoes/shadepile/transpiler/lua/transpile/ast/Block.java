@@ -90,7 +90,7 @@ public class Block extends PositionedNode {
           VariableOrPropertyAccess vOrPA = variables[i];
           if (vOrPA instanceof VariableReference varRef) {
             if (varRef.block == this && varRef.localName != null) {
-              variables[i] = this.declareLocal(varRef.localName);
+              variables[i] = this.findVariableOrDeclareLocal(varRef.localName);
             }
           }
         }
@@ -128,7 +128,7 @@ public class Block extends PositionedNode {
   }
 
   /// Declares a local variable by its name, adding it to this block's scope. Does nothing if the variable is already declared. Returns a reference to that variable.
-  public @NotNull VariableReference declareLocal(String name) {
+  public @NotNull VariableReference findVariableOrDeclareLocal(String name) {
     if (!this.locals.contains(name)) {
       if (this.anyGoto) throw new LuaCompileError("can't declare local variables after a potential goto statement");
       this.locals.add(name);
