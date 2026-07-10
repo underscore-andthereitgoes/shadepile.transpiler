@@ -17,7 +17,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 
-public class TokenFinder <T> {
+public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
 
   public final HashMap<String,Object> context = new HashMap<>();
   private final BiFunction<@NotNull TokenFinder<?>, @NotNull Parser, @Nullable List<T>> testFunc;
@@ -151,6 +151,12 @@ public class TokenFinder <T> {
     return new TokenFinder<>((tf, p) -> null);
   }
 
+  @Contract("-> this")
+  @Override
+  public TokenFinder<T> get() {
+    return this;
+  }
+
   @FunctionalInterface
   public interface TokenConditionFunction {
     boolean check(@NotNull TokenFinder<?> tokenFinder, @NotNull Token token, @NotNull Parser parser);
@@ -261,7 +267,7 @@ public class TokenFinder <T> {
 
   /// Creates a token finder that checks an array of token finders in order and returns the first valid one, rewinding before each check, or null if none of them are valid. Also resets `block` to its previous value between each check.
   @Contract(value = "_ -> new", pure = true)
-  public static <T> TokenFinder<T> firstValid(Supplier<@NotNull TokenFinder<T>>[] order) {
+  public static <T> TokenFinder<T> firstValid(Supplier<@NotNull TokenFinder<T>>... order) {
     @SuppressWarnings("unchecked")
     TokenFinder<T>[] cachedFinders = new TokenFinder[order.length];
     return new TokenFinder<>(((tf, parser) -> {
