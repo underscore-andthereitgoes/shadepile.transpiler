@@ -121,14 +121,14 @@ public class Parser {
     final TokenFinder<PropertyPath>[] propertypathsuff = new TokenFinder[1];
     final TokenFinder<VariableOrPropertyAccess>[] simplevariable = new TokenFinder[1];
     final TokenFinder<VariableOrPropertyAccess>[] varlist = new TokenFinder[1];
+    final TokenFinder<Object>[] assignmentright = new TokenFinder[1];
     final TokenFinder<Assignment>[] assignment = new TokenFinder[1];
-    final TokenFinder<Expression>[] assignmentright = new TokenFinder[1];
-    final TokenFinder<Assignment>[] funcdec = new TokenFinder[1];
-    final TokenFinder<Assignment>[] localdec = new TokenFinder[1];
-    final TokenFinder<StatementLike>[] globaldec = new TokenFinder[1];
     final TokenFinder<String>[] varargparam = new TokenFinder[1];
     final TokenFinder<FunctionDefinition>[] funcexpr = new TokenFinder[1];
     final TokenFinder<FunctionDefinition>[] funcbody = new TokenFinder[1];
+    final TokenFinder<Assignment>[] funcdec = new TokenFinder[1];
+    final TokenFinder<Assignment>[] localdec = new TokenFinder[1];
+    final TokenFinder<StatementLike>[] globaldec = new TokenFinder[1];
     final TokenFinder<Map.Entry<@Nullable Expression, Expression>>[] tablefield = new TokenFinder[1];
     final TokenFinder<TableConstructor>[] tableconstructor = new TokenFinder[1];
 
@@ -492,7 +492,7 @@ public class Parser {
         TokenFinder.firstValid(
             TokenFinder.ordered(
                 (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.LEFT),
-                () -> (TokenFinder<Object>)(TokenFinder<?>)exprlist[0].throwing("expected parameter list after opening parenthesis"),
+                (TokenFinder<Object>)(TokenFinder<?>)exprlist[0].throwing("expected parameter list after opening parenthesis"),
                 (TokenFinder<Object>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.RIGHT).consume().throwing("expected a closing parenthesis")
             ),
             (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.StringLiteral.class).map((tokenFinder, stringLiterals) -> List.of((Literal.StringLiteral)new Literal.StringLiteral(stringLiterals.getFirst().value).at(stringLiterals.getFirst()))),
@@ -517,11 +517,123 @@ public class Parser {
         ),
         (TokenFinder<Expression>)(TokenFinder<?>)TokenFinder.ordered(
             (TokenFinder<Literal.StringLiteral>)TokenFinder.ofClass(Token.PropertyDot.class).consume(),
-            (TokenFinder<Literal.StringLiteral>)TokenFinder.ofClass(Token.Name.class)
+            TokenFinder.ofClass(Token.Name.class)
                 .map((tokenFinder, names) -> List.of((Literal.StringLiteral)new Literal.StringLiteral(names.getFirst().text).at(names.getFirst())))
                 .throwing("expected name after property dot")
         )
     ).map((tokenFinder, expressions) -> List.of(new PropertyPath(expressions.getFirst()))));
+
+    simplevariable[0] = TokenFinder.ofClass(Token.Name.class)
+        .map((tokenFinder, names) -> List.of((VariableOrPropertyAccess)tokenFinder.block.findVariableOrGlobal(names.getFirst().text).at(names.getFirst())))
+    ;
+
+    varlist[0] = TokenFinder.ordered(
+        props[0],
+        TokenFinder.oneOrMore(TokenFinder.ordered(
+            (TokenFinder<VariableOrPropertyAccess>)TokenFinder.ofClass(Token.Comma.class).consume(),
+            props[0].throwing("expected variable after comma")
+        ))
+    );
+
+    final BiFunction<TokenFinder<?>, List<Object>, List<Assignment>> assignmentmapper = (_, objects) -> {
+      if (objects.size() != 3) throw new IllegalStateException();
+      List<VariableOrPropertyAccess> targets = (List<VariableOrPropertyAccess>)objects.getFirst();
+      Token equalSign = (Token)objects.get(1);
+      List<Expression> values = (List<Expression>)objects.getLast();
+      return List.of((Assignment)new Assignment(targets.toArray(VariableOrPropertyAccess[]::new), values.toArray(Expression[]::new)).at(equalSign));
+    };
+
+    assignmentright[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.SingleEquals.class),
+        (TokenFinder<Object>)(TokenFinder<?>)exprlist[0]
+    );
+
+    assignment[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)varlist[0],
+        assignmentright[0]
+    ).map(assignmentmapper);
+
+    varargparam[0] = TokenFinder.ordered(
+        TokenFinder.ofClass(Token.ThreeDots.class).map((tokenFinder, threeDots) -> List.of("...")),
+        TokenFinder.optional(TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of(names.getFirst().text)))
+    ).map((tokenFinder, strings) -> List.of(String.join("", strings)));
+
+    funcexpr[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.FUNCTION).map((tokenFinder, keywords) -> {
+          tokenFinder.context.put("method", false);
+          return keywords;
+        }).withParentsTakeContext(),
+        () -> (TokenFinder<Object>)(TokenFinder<?>)funcbody[0].throwing("expected function body after \"function\"")
+    ).map((tokenFinder, objects) -> {
+      Token.Keyword kw = (Token.Keyword)objects.getFirst();
+      FunctionDefinition body = (FunctionDefinition)objects.getLast();
+      return List.of((FunctionDefinition)body.at(kw));
+    });
+
+    funcbody[0] = TokenFinder.ordered(
+        TokenFinder.ordered(
+            (TokenFinder<String>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.LEFT).consume().throwing("expected opening parenthesis for function"),
+            TokenFinder.firstValid(
+                TokenFinder.ordered(
+                    namelist[0],
+                    TokenFinder.optional(TokenFinder.ordered(
+                        (TokenFinder<String>)TokenFinder.ofClass(Token.Comma.class).consume(),
+                        varargparam[0]
+                    ))
+                ),
+                varargparam[0],
+                (TokenFinder<String>)TokenFinder.emptyValid()
+            ),
+            (TokenFinder<String>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.RIGHT).consume().throwing("expected closing parenthesis after parameters")
+        ).map((tokenFinder, parameterNames) -> {
+          boolean method = Optional.ofNullable((Boolean)tokenFinder.context.get("method")).orElse(false);
+          FunctionDefinition funcDef = new FunctionDefinition(parameterNames.toArray(String[]::new), method, tokenFinder.block);
+          tokenFinder.block = funcDef.body;
+          return List.of(funcDef);
+        }).withParentsTakeContext(),
+        (TokenFinder<FunctionDefinition>)block[0].consume(),
+        (TokenFinder<FunctionDefinition>)TokenFinder.keyword(KeywordTokenType.END).throwing("expected statement or \"end\" in function").consume()
+    );
+
+    funcdec[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.FUNCTION).map((tokenFinder, keywords) -> {
+          tokenFinder.context.put("method", false);
+          return List.of(keywords.getFirst());
+        }).withParentsTakeContext(),
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ordered(
+            (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ordered(
+                TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of(names.getFirst().text)),
+                TokenFinder.zeroOrMore(TokenFinder.ordered(
+                    (TokenFinder<String>)TokenFinder.ofClass(Token.PropertyDot.class).consume(),
+                    TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of(names.getFirst().text)).throwing("expected property key after dot")
+                ))
+            ).map((tokenFinder, strings) -> {
+              VariableOrPropertyAccess expression = tokenFinder.block.findVariableOrGlobal(strings.removeFirst());
+              while (!strings.isEmpty()) {
+                expression = new PropertyAccess(expression, new Literal.StringLiteral(strings.removeFirst()));
+              }
+              return List.of(expression);
+            }),
+            (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.optional(TokenFinder.ordered(
+                (TokenFinder<String>)TokenFinder.ofClass(Token.PropertyColon.class).consume(),
+                TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of(names.getFirst().text)).throwing("expected property key after colon")
+            ))
+        ).map((tokenFinder, objects) -> {
+          if (objects.size() == 2) {
+            tokenFinder.context.put("method", true);
+            return List.of(new PropertyAccess((VariableOrPropertyAccess)objects.getFirst(), new Literal.StringLiteral((String)objects.getLast())));
+          } else if (objects.size() == 1) {
+            tokenFinder.context.put("method", false);
+            return List.of((VariableOrPropertyAccess)objects.getFirst());
+          } else throw new IllegalStateException();
+        }).withParentsTakeContext(),
+        (TokenFinder<Object>)(TokenFinder<?>)funcbody[0].throwing("expected function body after \"function <name>\"")
+    ).map((tokenFinder, objects) -> {
+      Token.Keyword keyword = (Token.Keyword)objects.getFirst();
+      VariableOrPropertyAccess path = (VariableOrPropertyAccess)objects.get(1);
+      FunctionDefinition funcDef = (FunctionDefinition)objects.getLast();
+      return List.of((Assignment)new Assignment(new VariableOrPropertyAccess[]{path}, new FunctionDefinition[]{funcDef}).at(keyword));
+    });
 
   }
 }
