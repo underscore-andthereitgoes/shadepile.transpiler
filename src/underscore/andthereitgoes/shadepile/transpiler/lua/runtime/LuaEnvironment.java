@@ -1,0 +1,203 @@
+package underscore.andthereitgoes.shadepile.transpiler.lua.runtime;
+
+import org.jetbrains.annotations.NotNull;
+
+import java.util.random.RandomGenerator;
+
+
+public abstract class LuaEnvironment extends LuaTable {
+
+  private final @NotNull xoshiro256ss rng;
+  private boolean usingRNG = false;
+  private final @NotNull LuaRuntime runtime;
+
+  public LuaEnvironment(LuaRuntime runtime) {
+    this.runtime = runtime;
+    rng = new xoshiro256ss();
+  }
+
+  public void addGlobals(boolean withFiguraExtras) {
+    //
+  }
+
+  public void addMathModule(boolean withFiguraExtras) {
+    LuaTable math = new LuaTable();
+
+    math.putFunction("abs", (Object[] params) -> {
+      Number n = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.abs()", 1);
+      if (n instanceof Long l) return new Object[]{Math.abs(l)};
+      if (n instanceof Double d) return new Object[]{Math.abs(d)};
+      throw new IllegalStateException();
+    });
+    math.putFunction("acos", (Object[] params) -> new Object[]{Math.acos(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.acos()", 1))});
+    math.putFunction("asin", (Object[] params) -> new Object[]{Math.asin(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.asin()", 1))});
+    math.putFunction("atan", (Object[] params) -> {
+      double y = LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.atan()", 1);
+      if (params.length >= 2) {
+        double x = LuaRuntime.assertDouble(params[1], "math.atan()", 2);
+        return new Object[]{Math.atan2(y, x)};
+      }
+      return new Object[]{Math.atan(y)};
+    });
+    math.putFunction("ceil", (Object[] params) -> {
+      Number n = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.ceil()", 1);
+      if (n instanceof Long l) return new Object[]{l};
+      if (n instanceof Double d) return new Object[]{(long)Math.ceil(d)};
+      throw new IllegalStateException();
+    });
+    math.putFunction("cos", (Object[] params) -> new Object[]{Math.cos(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.cos()", 1))});
+    math.putFunction("deg", (Object[] params) -> new Object[]{Math.toDegrees(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.deg()", 1))});
+    math.putFunction("exp", (Object[] params) -> new Object[]{Math.exp(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.exp()", 1))});
+    math.putFunction("floor", (Object[] params) -> {
+      Number n = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.floor()", 1);
+      if (n instanceof Long l) return new Object[]{l};
+      if (n instanceof Double d) return new Object[]{(long)Math.floor(d)};
+      throw new IllegalStateException();
+    });
+    math.putFunction("fmod", (Object[] params) -> {
+      Number a = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.fmod()", 1);
+      Number b = LuaRuntime.assertNumber(params.length > 1 ? params[1] : null, "math.fmod()", 2);
+      if (a instanceof Double || b instanceof Double) {
+        double x = a.doubleValue();
+        double y = b.doubleValue();
+        return new Object[]{x - (long)(x / y) * y};
+      } else if (a instanceof Long x && b instanceof Long y) {
+        return new Object[]{x - (x / y) * y}; // does truncation
+      }
+      throw new IllegalStateException();
+    });
+    math.putFunction("frexp", (Object[] params) -> {
+      double x = LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.frexp()", 1);
+      if (Double.isFinite(x) && x != 0d) {
+        double e = Math.floor(Math.log(Math.abs(x)) / Math.log(2d) + 1d);
+        double m = x / Math.pow(2d, e);
+        return new Object[]{m, (long)e};
+      } else {
+        return new Object[]{x, 0L};
+      }
+    });
+    math.put("huge", Double.POSITIVE_INFINITY);
+    math.putFunction("ldexp", (Object[] params) -> {
+      double m = LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.ldexp()", 1);
+      int e = LuaRuntime.assertNumber(params.length > 1 ? params[1] : null, "math.ldexp()", 2).intValue();
+      return new Object[]{m * (double)Math.powExact(2L, e)};
+    });
+    math.putFunction("log", (Object[] params) -> {
+      double x = LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.log()", 1);
+      if (params.length >= 2) {
+        double base = LuaRuntime.assertDouble(params[1], "math.log()", 2);
+        if (base == 10d) return new Object[]{Math.log10(x)};
+        if (base != Math.E) return new Object[]{Math.log(x) / Math.log(base)};
+      }
+      return new Object[]{Math.log(x)};
+    });
+    math.putFunction("max", (Object[] params) -> {
+      if (params.length == 0) throw new LuaRuntimeError("math.max() needs at least 1 argument");
+      Object maximum = null;
+      for (Object arg: params) {
+        if (maximum == null || runtime.o.lt(maximum, arg)) maximum = arg;
+      }
+      return new Object[]{maximum};
+    });
+    math.put("maxinteger", Long.MAX_VALUE);
+    math.putFunction("min", (Object[] params) -> {
+      if (params.length == 0) throw new LuaRuntimeError("math.min() needs at least 1 argument");
+      Object minimum = null;
+      for (Object arg: params) {
+        if (minimum == null || runtime.o.lt(arg, minimum)) minimum = arg;
+      }
+      return new Object[]{minimum};
+    });
+    math.put("mininteger", Long.MIN_VALUE);
+    math.putFunction("modf", (Object[] params) -> {
+      double x = LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.modf()", 1);
+      if (x >= 0.0d) return new Object[]{Math.floor(x), x - Math.floor(x)};
+      else return new Object[]{Math.ceil(x), x - Math.ceil(x)};
+    });
+    math.put("pi", Math.PI);
+    math.putFunction("rad", (Object[] params) -> new Object[]{Math.toRadians(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.rad()", 1))});
+    math.putFunction("random", (Object[] params) -> {
+      if (this.usingRNG) {
+        synchronized (this.rng) {
+          if (params.length == 0) return new Object[]{this.rng.nextDouble()};
+          long m = 1;
+          long n;
+          if (params.length == 1) {
+            n = LuaRuntime.assertNumber(params[0], "math.random()", 1).longValue();
+          } else {
+            m = LuaRuntime.assertNumber(params[0], "math.random()", 1).longValue();
+            n = LuaRuntime.assertNumber(params[1], "math.random()", 2).longValue();
+          }
+          return new Object[]{this.rng.nextLong(Math.abs(m - n) + 1L) + Math.min(m, n)};
+        }
+      } else {
+        if (params.length == 0) return new Object[]{Math.random()};
+        long m = 1;
+        long n;
+        if (params.length == 1) {
+          n = LuaRuntime.assertNumber(params[0], "math.random()", 1).longValue();
+        } else {
+          m = LuaRuntime.assertNumber(params[0], "math.random()", 1).longValue();
+          n = LuaRuntime.assertNumber(params[1], "math.random()", 2).longValue();
+        }
+        return new Object[]{RandomGenerator.getDefault().nextLong(Math.abs(m - n) + 1L) + Math.min(m, n)};
+      }
+    });
+    math.putFunction("randomseed", (Object[] params) -> {
+      synchronized (this.rng) {
+        if (params.length == 0) {
+          this.usingRNG = false; // use internal random instead of seeded random
+        } else {
+          long x = LuaRuntime.assertNumber(params[0], "math.randomseed()", 1).longValue();
+          long y = params.length > 1 ? LuaRuntime.assertNumber(params[1], "math.randomseed()", 2).longValue() : 0;
+          this.rng.seed(x, y);
+          this.usingRNG = true;
+        }
+      }
+      return new Object[0];
+    });
+    math.putFunction("sin", (Object[] params) -> new Object[]{Math.sin(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.sin()", 1))});
+    math.putFunction("sqrt", (Object[] params) -> new Object[]{Math.sqrt(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.sqrt()", 1))});
+    math.putFunction("tan", (Object[] params) -> new Object[]{Math.tan(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.tan()", 1))});
+    math.putFunction("tointeger", (Object[] params) -> {
+      Object param0 = params.length > 1 ? params[0] : null;
+      if (param0 instanceof Long) return new Object[]{param0};
+      if (param0 instanceof Number n) return new Object[]{n.longValue()};
+      if (param0 instanceof String s) {
+        Number n = LuaRuntime.tonumber_raw(s);
+        if (n instanceof Long l) return new Object[]{l};
+        if (n instanceof Double d && !Double.isNaN(d)) return new Object[]{d};
+        return new Object[]{null};
+      }
+      return new Object[]{null};
+    });
+    math.putFunction("type", (Object[] params) -> {
+      Object param0 = params.length > 1 ? params[0] : null;
+      if (param0 instanceof Long) return new Object[]{"integer"};
+      if (param0 instanceof Double) return new Object[]{"float"};
+      return new Object[]{null};
+    });
+    math.putFunction("ult", (Object[] params) -> {
+      long m = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.ult()", 1).longValue();
+      long n = LuaRuntime.assertNumber(params.length > 1 ? params[1] : null, "math.ult()", 2).longValue();
+      return new Object[]{Long.compareUnsigned(m, n) < 0};
+    });
+
+    if (withFiguraExtras) {
+      math.putFunction("clamp", (Object[] params) -> {
+        Number value = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.clamp()", 1);
+        Number min = LuaRuntime.assertNumber(params.length > 1 ? params[1] : null, "math.clamp()", 2);
+        Number max = LuaRuntime.assertNumber(params.length > 2 ? params[2] : null, "math.clamp()", 3);
+        if (value instanceof Long v && min instanceof Long m && max instanceof Long n) {
+          return new Object[]{m > n ? n : v > n ? n : v < m ? m : v};
+        } else {
+          double v = value.doubleValue();
+          double m = min.doubleValue();
+          double n = max.doubleValue();
+          //noinspection ManualMinMaxCalculation
+          return new Object[]{m > n ? n : v > n ? n : v < m ? m : v};
+        }
+      });
+    }
+  }
+}
