@@ -72,7 +72,9 @@ public class StringReader {
 
   /// Read and return the next character, and advance the pointer. Throws an error if `hasMore()` is `false`. Also see `take(n)`.
   public char take1() {
-    return this.input.charAt(this.pointer = Math.min(this.pointer + 1, this.inputLength));
+    int p = this.pointer;
+    this.pointer = Math.min(this.pointer + 1, this.inputLength);
+    return this.input.charAt(p);
   }
   /// Read and return the next *n* characters and advance the pointer. May return less than *n* characters if less are available. For *n* = 1, use `take1()`.
   public @NotNull String take(int n) {

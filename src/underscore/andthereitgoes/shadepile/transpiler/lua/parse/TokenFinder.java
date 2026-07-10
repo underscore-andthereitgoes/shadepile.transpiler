@@ -14,6 +14,8 @@ import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import static underscore.andthereitgoes.shadepile.transpiler.MainTest.breakpoint;
+
 
 @SuppressWarnings("unused")
 @DefinitelyNotThreadSafe
@@ -69,32 +71,54 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
 
   /// Test this token finder against a parser, returning the test results if it is valid, or `null` if it isn't.
   public @Nullable List<T> test(@NotNull Parser parser) {
-    var ptr0 = parser.tell();
-    var results = this.testFunc.apply(this, parser);
-    if (results == null) parser.seek(ptr0);
+    TokenFinder<T> tokenFinder = this;
+    int ptr0 = parser.tell();
+    Block block0 = tokenFinder.block;
+    var results = testFunc.apply(tokenFinder, parser);
+    if (results == null) {
+      parser.seek(ptr0);
+      tokenFinder.block = block0;
+    }
     return results;
+  }
+
+  /// Creates a function equivalent to calling `this.test` for an arbitrary `TokenFinder`, with the extra wrapper it applies.
+  public BiFunction<@NotNull TokenFinder<?>, @NotNull Parser, @Nullable List<T>> createWrappedTest() {
+    BiFunction<@NotNull TokenFinder<?>,@NotNull Parser,@Nullable List<T>> tf = this.testFunc;
+    return (tokenFinder, parser) -> {
+      int ptr0 = parser.tell();
+      Block block0 = tokenFinder.block;
+      var results = tf.apply(tokenFinder, parser);
+      if (results == null) {
+        parser.seek(ptr0);
+        tokenFinder.block = block0;
+      }
+      return results;
+    };
   }
 
   /// Creates a new token finder with the same test but a mapping function applied afterwards regardless of validity. If the mapping function returns `null`, the finder invalidates.
   @Contract(value = "_ -> new", pure = true)
   public <R> TokenFinder<R> mapAlways(BiFunction<TokenFinder<?>, @Nullable List<T>, @Nullable List<R>> mapper) {
-    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, this.test(parser)));
+    BiFunction<@NotNull TokenFinder<?>,@NotNull Parser,@Nullable List<T>> tf = this.createWrappedTest();
+    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, tf.apply(finder, parser))).withBlock(this.block);
   }
 
   /// Creates a new token finder with the same test but a mapping function applied afterwards regardless of validity. If the mapping function returns `null`, the finder invalidates.
   @Contract(value = "_ -> new", pure = true)
   public <R> TokenFinder<R> mapAlwaysWithParser(TriFunction<TokenFinder<?>, @NotNull Parser, @Nullable List<T>, @Nullable List<R>> mapper) {
-    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, parser, this.test(parser)));
+    BiFunction<@NotNull TokenFinder<?>,@NotNull Parser,@Nullable List<T>> tf = this.createWrappedTest();
+    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, parser, tf.apply(finder, parser))).withBlock(this.block);
   }
 
   /// Creates a new token finder with the same test but a mapping function applied afterwards if it's valid. If the mapping function returns `null`, the finder invalidates.
   @Contract(value = "_ -> new", pure = true)
   public <R> TokenFinder<R> map(BiFunction<TokenFinder<?>, @NotNull List<T>, @Nullable List<R>> mapper) {
+    BiFunction<@NotNull TokenFinder<?>,@NotNull Parser,@Nullable List<T>> tf = this.createWrappedTest();
     return new TokenFinder<>((finder, parser) -> {
-      final @Nullable List<T> r = this.test(parser);
-      if (r != null) return mapper.apply(finder, r);
-      return null;
-    });
+      final @Nullable List<T> r = tf.apply(finder, parser);
+      return r != null ? mapper.apply(finder, r) : null;
+    }).withBlock(this.block);
   }
 
   /// Creates a new token finder with the same test but throwing an error if invalid.
@@ -174,23 +198,19 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
   public static <T> TokenFinder<T> ordered(Supplier<@NotNull TokenFinder<T>>... order) {
     @SuppressWarnings("unchecked")
     TokenFinder<T>[] cachedFinders = new TokenFinder[order.length];
-    return new TokenFinder<>(((tf, parser) -> {
+    return new TokenFinder<>((tf, parser) -> {
 
       if (cachedFinders.length > 0 && cachedFinders[0] == null) for (int i = 0; i < order.length; i++) cachedFinders[i] = order[i].get();
 
       List<T> out = new ArrayList<>();
-      int ptr0 = parser.tell();
 
       for (var finder: cachedFinders) {
         if (tf.block != null) finder.block = tf.block;
         finder.mergeContext(tf.context);
         var results = finder.test(parser);
-        if (results == null) {
-          parser.seek(ptr0);
-          return null;
-        }
+        if (results == null) return null; // rewinding done by outer function
         if (finder.parentsTakeContext) {
-          tf.block = finder.block;
+          if (finder.block != null) tf.block = finder.block;
           tf.mergeContext(finder.context);
         }
         out.addAll(results);
@@ -198,7 +218,7 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
 
       return out;
 
-    }));
+    });
   }
 
   /// Creates a wrapper around a token finder that validates with an empty array instead of invalidating.
@@ -226,7 +246,7 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
           break;
         }
         if (finder.parentsTakeContext) {
-          tf.block = finder.block;
+          if (finder.block != null) tf.block = finder.block;
           tf.mergeContext(finder.context);
         }
         out.addAll(results);
@@ -255,7 +275,7 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
           break;
         }
         if (finder.parentsTakeContext) {
-          tf.block = finder.block;
+          if (finder.block != null) tf.block = finder.block;
           tf.mergeContext(finder.context);
         }
         out.addAll(results);
@@ -279,12 +299,12 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
       int ptr0 = parser.tell();
 
       for (var finder: cachedFinders) {
-        finder.block = tf.block;
+        if (tf.block != null) finder.block = tf.block;
         finder.mergeContext(tf.context);
         List<T> results = finder.test(parser);
         if (results != null) {
           if (finder.parentsTakeContext) {
-            tf.block = finder.block;
+            if (finder.block != null) tf.block = finder.block;
             tf.mergeContext(finder.context);
           }
           return results;
@@ -301,14 +321,14 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
   @Contract(value = "_ -> new", pure = true)
   public static <T extends Token> TokenFinder<T> ofClass(Class<T> clazz) {
     //noinspection unchecked
-    return (TokenFinder<T>)tokenCondition(((tokenFinder, token, parser) -> token.getClass() == clazz));
+    return (TokenFinder<T>)tokenCondition(((tokenFinder, token, parser) -> Objects.equals(token.getClass(), clazz)));
   }
 
   /// Creates a token finder that validates if the next token is an instance of the given token class and also conforms to a predicate.
   @Contract(value = "_,_ -> new", pure = true)
   public static <T extends Token> TokenFinder<T> ofClassAndAlso(Class<T> clazz, Predicate<T> andAlso) {
     //noinspection unchecked
-    return (TokenFinder<T>)tokenCondition(((tokenFinder, token, parser) -> token.getClass() == clazz && andAlso.test((T)token)));
+    return (TokenFinder<T>)tokenCondition(((tokenFinder, token, parser) -> Objects.equals(token.getClass(), clazz) && andAlso.test((T)token)));
   }
 
   /// Creates a token finder that validates if the next token is a `Keyword` with the given `kw` value, resulting in that token.

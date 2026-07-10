@@ -1,11 +1,13 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua.tokenize;
 
 import org.jetbrains.annotations.Nullable;
+import underscore.andthereitgoes.shadepile.transpiler.MainTest;
 import underscore.andthereitgoes.shadepile.transpiler.lua.KeywordTokenType;
 import underscore.andthereitgoes.shadepile.transpiler.lua.OperatorTokenType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -292,12 +294,37 @@ public class Tokenizer extends StringReader {
               }
             }
 
-            return new Token.NumberLiteral(floating ? num.doubleValue() : num.longValue());
+            return floating ? new Token.NumberLiteral(num.doubleValue()) : new Token.NumberLiteral(num.longValue());
           }
         } catch (NumberFormatException e) {
           throw new LuaSyntaxError("unable to parse number");
         }
       }
+    }
+    return null;
+  }
+
+  private @Nullable Token.BooleanLiteral takeBooleanLiteral() {
+    if (!this.hasMore()) return null;
+    for (String t: new String[]{"false", "true"}) {
+      int len = t.length();
+      if (this.peek(len).equals(t)) {
+        if (IDENTIFIER.contains(this.look(len))) continue;
+        this.take(len);
+        return new Token.BooleanLiteral(t.equals("true"));
+      }
+    }
+    return null;
+  }
+
+  private @Nullable Token.NilLiteral takeNilLiteral() {
+    if (!this.hasMore()) return null;
+    String t = "nil";
+    int len = 3;
+    if (this.peek(len).equals(t)) {
+      if (IDENTIFIER.contains(this.look(len))) return null;
+      this.take(len);
+      return new Token.NilLiteral();
     }
     return null;
   }
@@ -449,6 +476,8 @@ public class Tokenizer extends StringReader {
       if (token == null) token = this.takeThreeDots();
       if (token == null) token = this.takeKeyword();
       if (token == null) token = this.takeOperator();
+      if (token == null) token = this.takeBooleanLiteral();
+      if (token == null) token = this.takeNilLiteral();
       if (token == null) token = this.takeStringLiteral();
       if (token == null) token = this.takeBracket();
       if (token == null) token = this.takeName();
@@ -484,6 +513,20 @@ public class Tokenizer extends StringReader {
       e.column = unclosedToken.column;
       throw e;
     }
+  }
+
+  public Token[] flush() {
+    List<Token> tokens = new ArrayList<>();
+
+    Token nextToken = null;
+    do {
+      nextToken = this.next();
+      if (nextToken != null) tokens.add(nextToken);
+    } while (nextToken != null);
+
+    this.end();
+
+    return tokens.toArray(Token[]::new);
   }
 
 }

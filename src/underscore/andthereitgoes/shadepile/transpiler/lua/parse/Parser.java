@@ -80,9 +80,10 @@ public class Parser {
   }
 
   public @Nullable Token take() {
+    int p = pointer;
     pointer = Math.min(pointer + 1, input.length);
-    if (pointer == input.length) return null;
-    else return input[pointer];
+    if (p >= input.length) return null;
+    else return input[p];
   }
 
   @SuppressWarnings({"unchecked", "unused"})
@@ -170,6 +171,9 @@ public class Parser {
             (TokenFinder<Block>)block[0].consume()
         ))
     ).map((tokenFinder, objects) -> {
+      System.out.println(tokenFinder);
+      System.out.println(tokenFinder.block);
+      Thread.dumpStack();
       Token.Keyword keyword = (Token.Keyword)objects.getFirst();
       List<If.Section> ifSections = (List<If.Section>)objects.get(1);
       Block elseSection = null;
@@ -211,7 +215,7 @@ public class Parser {
         (TokenFinder<Object>)block[0].consume(),
         (TokenFinder<Object>)TokenFinder.keyword(KeywordTokenType.UNTIL).consume()
             .throwing("expected statement or \"until\""),
-        (TokenFinder<Object>)(TokenFinder<?>)expr[0]
+        () -> (TokenFinder<Object>)(TokenFinder<?>)expr[0]
             .throwing("expected expression")
     ).map((tokenFinder, objects) -> {
       Block repeatBlock = (Block)objects.getFirst();
@@ -472,9 +476,12 @@ public class Parser {
       return null;
     };
 
-    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<Expression>> propsfunccallmapper = (_, callInfoOrPropertyPaths) -> List.of(callpathmapper.apply(callInfoOrPropertyPaths, true, true));
-    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<VariableOrPropertyAccess>> propsmapper = (_, callInfoOrPropertyPaths) -> List.of((VariableOrPropertyAccess)callpathmapper.apply(callInfoOrPropertyPaths, true, false));
-    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<FunctionCall>> funccallmapper = (_, callInfoOrPropertyPaths) -> List.of((FunctionCall)callpathmapper.apply(callInfoOrPropertyPaths, false, true));
+    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<Expression>> propsfunccallmapper = (_, callInfoOrPropertyPaths) ->
+        Optional.ofNullable(callpathmapper.apply(callInfoOrPropertyPaths, true, true)).map(Collections::singletonList).orElse(null);
+    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<VariableOrPropertyAccess>> propsmapper = (_, callInfoOrPropertyPaths) ->
+        Optional.ofNullable((VariableOrPropertyAccess)callpathmapper.apply(callInfoOrPropertyPaths, true, false)).map(Collections::singletonList).orElse(null);
+    final BiFunction<TokenFinder<?>, List<CallInfoOrPropertyPath>, List<FunctionCall>> funccallmapper = (_, callInfoOrPropertyPaths) ->
+        Optional.ofNullable((FunctionCall)callpathmapper.apply(callInfoOrPropertyPaths, false, true)).map(Collections::singletonList).orElse(null);
 
     propsfunccall[0] = callpath[0].map(propsfunccallmapper);
     props[0] = callpath[0].map(propsmapper);
@@ -756,8 +763,7 @@ public class Parser {
 
 
     Block mainBlock = new Block(null, false);
-    TokenFinder<?> mainFinder = block[0].consume();
-    mainFinder.block = mainBlock;
+    TokenFinder<?> mainFinder = block[0].consume().withBlock(mainBlock);
 
     try {
       mainFinder.test(this);
