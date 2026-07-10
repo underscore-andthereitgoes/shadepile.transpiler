@@ -3,6 +3,8 @@ package underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.NewlineCountingStringBuilder;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Map;
 
 
 public class TableConstructor extends Expression {
@@ -18,6 +20,12 @@ public class TableConstructor extends Expression {
   private final ArrayList<Expression> flatEntries = new ArrayList<>();
 
   public TableConstructor() {
+  }
+
+  public TableConstructor(Collection<Map.Entry<Expression, Expression>> entries) {
+    for (Map.Entry<Expression, Expression> entry: entries) {
+      this.addEntry(entry.getKey(), entry.getValue());
+    }
   }
 
   public void addEntry(Expression value) {

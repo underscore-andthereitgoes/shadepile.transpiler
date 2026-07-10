@@ -4,19 +4,19 @@ import org.apache.commons.lang3.function.TriFunction;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import underscore.andthereitgoes.shadepile.transpiler.lua.DefinitelyNotThreadSafe;
 import underscore.andthereitgoes.shadepile.transpiler.lua.KeywordTokenType;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.Token;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.Block;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 
+@SuppressWarnings("unused")
+@DefinitelyNotThreadSafe
 public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
 
   public final HashMap<String,Object> context = new HashMap<>();
@@ -165,10 +165,11 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
   /// Creates a token finder that takes the next token and checks it against a condition function, returning the token if it's valid or `null` if it isn't.
   @Contract(value = "_ -> new", pure = true)
   public static TokenFinder<Token> tokenCondition(TokenConditionFunction condition) {
-    return new TokenFinder<>((tf, parser) -> condition.check(tf, parser.peek(), parser) ? List.of(parser.take()) : null);
+    return new TokenFinder<>((tf, parser) -> condition.check(tf, parser.peek(), parser) ? List.of(Objects.requireNonNull(parser.take())) : null);
   }
 
   /// Creates a token finder that checks each condition in order, concatenating their results into an array, until they're all validated, or exits invalidly when any condition isn't valid. Each supplier is evaluated exactly once, upon the first validation request.
+  @SafeVarargs // I don't know
   @Contract(value = "_ -> new", pure = true)
   public static <T> TokenFinder<T> ordered(Supplier<@NotNull TokenFinder<T>>... order) {
     @SuppressWarnings("unchecked")
@@ -266,6 +267,7 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
   }
 
   /// Creates a token finder that checks an array of token finders in order and returns the first valid one, rewinding before each check, or null if none of them are valid. Also resets `block` to its previous value between each check.
+  @SafeVarargs // I don't know
   @Contract(value = "_ -> new", pure = true)
   public static <T> TokenFinder<T> firstValid(Supplier<@NotNull TokenFinder<T>>... order) {
     @SuppressWarnings("unchecked")

@@ -25,10 +25,10 @@ public class Block extends PositionedNode {
   private final Map<String,Label> labels;
   private final String groupName;
   private final List<StatementLike> statements;
-  private boolean returned = false;
+  private boolean returned;
   private boolean anyGoto = false;
-  private @Nullable Block parent;
-  private boolean inheritLabels;
+  private final @Nullable Block parent;
+  private final boolean inheritLabels;
   private boolean canBreak;
   private final Set<Block> labelChildren;
 
@@ -95,8 +95,8 @@ public class Block extends PositionedNode {
           }
         }
       }
-      case Return ret -> this.returned = true;
-      case Break brk -> {
+      case Return _ -> this.returned = true;
+      case Break _ -> {
         if (!this.canBreak) throw new LuaCompileError("can only break out of a loop, and can't call break after another break in the same block");
         this.canBreak = false;
       }
@@ -104,7 +104,7 @@ public class Block extends PositionedNode {
         if (this.containsLabel(label.name)) throw new LuaCompileError("label ::" + label.name + ":: has already been defined in this scope");
         this.labels.put(label.name, label);
       }
-      case Goto goer when !this.anyGoto -> this.propagateGoto();
+      case Goto _ when !this.anyGoto -> this.propagateGoto();
       default -> {}
     }
   }
@@ -125,6 +125,18 @@ public class Block extends PositionedNode {
     this.predefinedLocalValueCode.put(name, valueExpression);
     this.locals.add(name);
     return VariableReference.local(name, this, i);
+  }
+
+  public void addExplicitGlobal(String name) {
+    this.explicitGlobals.add(name);
+  }
+
+  public void addExplicitGlobals(Collection<String> names) {
+    this.explicitGlobals.addAll(names);
+  }
+
+  public void enableAllExplicitGlobals() {
+    this.explicitGlobalsAll = true;
   }
 
   /// Declares a local variable by its name, adding it to this block's scope. Does nothing if the variable is already declared. Returns a reference to that variable.

@@ -1,7 +1,5 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua.parse;
 
-import org.apache.commons.lang3.function.Functions;
-import org.apache.commons.lang3.function.TriConsumer;
 import org.apache.commons.lang3.function.TriFunction;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -17,6 +15,7 @@ import java.util.*;
 import java.util.function.*;
 
 
+@DefinitelyNotThreadSafe
 public class Parser {
 
   private static abstract class CallInfoOrPropertyPath {}
@@ -80,11 +79,13 @@ public class Parser {
     return pointer < input.length ? input[pointer] : null;
   }
 
-  public Token take() {
-    return input[pointer = Math.min(pointer + 1, input.length - 1)];
+  public @Nullable Token take() {
+    pointer = Math.min(pointer + 1, input.length);
+    if (pointer == input.length) return null;
+    else return input[pointer];
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({"unchecked", "unused"})
   public Block parse() {
     final TokenFinder<StatementLike>[] block = new TokenFinder[1];
     final TokenFinder<?>[] s_end = new TokenFinder[1];
@@ -129,7 +130,7 @@ public class Parser {
     final TokenFinder<Assignment>[] funcdec = new TokenFinder[1];
     final TokenFinder<Assignment>[] localdec = new TokenFinder[1];
     final TokenFinder<StatementLike>[] globaldec = new TokenFinder[1];
-    final TokenFinder<Map.Entry<@Nullable Expression, Expression>>[] tablefield = new TokenFinder[1];
+    final TokenFinder<Map.Entry<Expression, Expression>>[] tablefield = new TokenFinder[1];
     final TokenFinder<TableConstructor>[] tableconstructor = new TokenFinder[1];
 
     block[0] = TokenFinder.zeroOrMore(() -> stmt[0].map((tokenFinder, statements) -> {
@@ -545,11 +546,11 @@ public class Parser {
 
     assignmentright[0] = TokenFinder.ordered(
         (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.SingleEquals.class),
-        (TokenFinder<Object>)(TokenFinder<?>)exprlist[0]
+        (TokenFinder<Object>)(TokenFinder<?>)exprlist[0].group()
     );
 
     assignment[0] = TokenFinder.ordered(
-        (TokenFinder<Object>)(TokenFinder<?>)varlist[0],
+        (TokenFinder<Object>)(TokenFinder<?>)varlist[0].group(),
         assignmentright[0]
     ).map(assignmentmapper);
 
@@ -627,13 +628,146 @@ public class Parser {
             return List.of((VariableOrPropertyAccess)objects.getFirst());
           } else throw new IllegalStateException();
         }).withParentsTakeContext(),
-        (TokenFinder<Object>)(TokenFinder<?>)funcbody[0].throwing("expected function body after \"function <name>\"")
+        (TokenFinder<Object>)(TokenFinder<?>)funcbody[0].throwing("expected function body after \"function <path>\"")
     ).map((tokenFinder, objects) -> {
       Token.Keyword keyword = (Token.Keyword)objects.getFirst();
       VariableOrPropertyAccess path = (VariableOrPropertyAccess)objects.get(1);
       FunctionDefinition funcDef = (FunctionDefinition)objects.getLast();
       return List.of((Assignment)new Assignment(new VariableOrPropertyAccess[]{path}, new FunctionDefinition[]{funcDef}).at(keyword));
     });
+
+    localdec[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.LOCAL),
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.firstValid(
+            TokenFinder.ordered(
+                (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.FUNCTION).map((tokenFinder, keywords) -> {
+                  tokenFinder.context.put("method", false);
+                  return List.of(keywords.getFirst());
+                }).withParentsTakeContext(),
+                (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.Name.class)
+                    .map((tokenFinder, names) -> List.of(names.getFirst().text))
+                    .throwing("expected function name after \"local function\""),
+                (TokenFinder<Object>)(TokenFinder<?>)funcbody[0].throwing("expected function body after \"local function <name>\"")
+            ).map((tokenFinder, objects) -> {
+              Token.Keyword keyword = (Token.Keyword)objects.getFirst();
+              String localName = (String)objects.get(1);
+              FunctionDefinition funcDef = (FunctionDefinition)objects.getLast();
+              return List.of((Assignment)new Assignment(new VariableReference[]{tokenFinder.block.findVariableOrDeclareLocal(localName)}, new FunctionDefinition[]{funcDef}).at(keyword));
+            }),
+            TokenFinder.ordered(
+                (TokenFinder<List<Object>>)(TokenFinder<?>)attrnamelist[0].group(),
+                (TokenFinder<List<Object>>)(TokenFinder<?>)TokenFinder.optional(TokenFinder.ordered(
+                    (TokenFinder<List<Expression>>)TokenFinder.ofClass(Token.SingleEquals.class).consume(),
+                    exprlist[0].group().throwing("expected values after \"=\"")
+                ))
+            ).map((tokenFinder, lists) -> {
+              List<String> names = (List<String>)(List<?>)lists.getFirst();
+              final List<Expression> values;
+              if (lists.size() == 2) values = (List<Expression>)(List<?>)lists.getLast();
+              else if (lists.size() != 1) throw new IllegalStateException();
+              else values = List.of();
+              return List.of(new Assignment(
+                  names.stream().map(s -> tokenFinder.block.findVariableOrDeclareLocal(s)).toArray(VariableOrPropertyAccess[]::new),
+                  values.toArray(Expression[]::new)
+              ));
+            }),
+            (TokenFinder<Assignment>)TokenFinder.invalid().throwing("expected variable names or \"function\" after \"local\"")
+        )
+    ).map((tokenFinder, objects) -> {
+      Token.Keyword kw = (Token.Keyword)objects.getFirst();
+      Assignment localAssignment = (Assignment)objects.getLast();
+      return List.of((Assignment)localAssignment.orAt(kw));
+    });
+
+    globaldec[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.GLOBAL),
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.firstValid(
+            TokenFinder.ofClassAndAlso(Token.Operator.class, operator -> operator.type == OperatorTokenType.ASTERISK)
+                .map((tokenFinder, operators) -> (List<StatementLike>)(List<?>)List.<BlockDirectiveOnly>of(Block::enableAllExplicitGlobals)),
+            TokenFinder.ordered(
+                (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.FUNCTION).map((tokenFinder, keywords) -> {
+                  tokenFinder.context.put("method", false);
+                  return List.of(keywords.getFirst());
+                }).withParentsTakeContext(),
+                (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.Name.class)
+                    .map((tokenFinder, names) -> List.of(names.getFirst().text))
+                    .throwing("expected function name after \"global function\""),
+                (TokenFinder<Object>)(TokenFinder<?>)funcbody[0].throwing("expected function body after \"global function <name>\"")
+            ).map((tokenFinder, objects) -> {
+              Token.Keyword keyword = (Token.Keyword)objects.getFirst();
+              String globalName = (String)objects.get(1);
+              FunctionDefinition funcDef = (FunctionDefinition)objects.getLast();
+              return List.of((StatementLike)new Assignment(
+                  new PropertyAccess[]{new PropertyAccess(VariableReference.env(), new Literal.StringLiteral(globalName))},
+                  new FunctionDefinition[]{funcDef}
+              ).at(keyword));
+            }),
+            attrnamelist[0].map((tokenFinder, strings) -> (List<StatementLike>)(List<?>)List.<BlockDirectiveOnly>of(blk -> blk.addExplicitGlobals(strings)))
+        )
+    ).map((tokenFinder, objects) -> {
+      Token.Keyword kw = (Token.Keyword)objects.getFirst();
+      StatementLike statement = (StatementLike)objects.getLast();
+      if (statement instanceof PositionedNode pn) return List.of((StatementLike)pn.orAt(kw));
+      else return List.of(statement);
+    });
+
+    tablefield[0] = TokenFinder.firstValid(
+        TokenFinder.ordered(
+            TokenFinder.firstValid(
+                TokenFinder.ordered(
+                    (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.SquareBracket.class, squareBracket -> squareBracket.side == Token.BracketSide.LEFT).consume(),
+                    expr[0],
+                    (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.SquareBracket.class, squareBracket -> squareBracket.side == Token.BracketSide.RIGHT).consume()
+                ),
+                TokenFinder.ofClass(Token.Name.class)
+                    .map((tokenFinder, names) -> List.of((Expression)new Literal.StringLiteral(names.getFirst().text).at(names.getFirst())))
+            ),
+            (TokenFinder<Expression>)TokenFinder.ofClass(Token.SingleEquals.class).consume(),
+            expr[0]
+        ).map((tokenFinder, expressions) ->
+            List.of(Map.entry(expressions.getFirst(), expressions.getLast()))
+        ),
+        expr[0].map((tokenFinder, expressions) ->
+            List.of(Map.entry(TableConstructor.noKeyExpression, expressions.getLast()))
+        )
+    );
+
+    tableconstructor[0] = TokenFinder.ordered(
+        (TokenFinder<Map.Entry<Expression, Expression>>)TokenFinder.ofClassAndAlso(Token.CurlyBracket.class, curlyBracket -> curlyBracket.side == Token.BracketSide.LEFT).consume(),
+        TokenFinder.optional(TokenFinder.ordered(
+            tablefield[0],
+            TokenFinder.zeroOrMore(TokenFinder.ordered(
+                TokenFinder.firstValid(
+                    (TokenFinder<Map.Entry<Expression, Expression>>)TokenFinder.ofClass(Token.Comma.class).consume(),
+                    (TokenFinder<Map.Entry<Expression, Expression>>)TokenFinder.ofClass(Token.Semicolon.class).consume()
+                ),
+                tablefield[0]
+            )), // fine if this invalidates since it could just be trailing separator
+            TokenFinder.firstValid(
+                (TokenFinder<Map.Entry<Expression, Expression>>)TokenFinder.ofClass(Token.Comma.class).consume(),
+                (TokenFinder<Map.Entry<Expression, Expression>>)TokenFinder.ofClass(Token.Semicolon.class).consume(),
+                (TokenFinder<Map.Entry<Expression, Expression>>)TokenFinder.emptyValid()
+            )
+        )),
+        (TokenFinder<Map.Entry<Expression, Expression>>)TokenFinder.ofClassAndAlso(Token.CurlyBracket.class, curlyBracket -> curlyBracket.side == Token.BracketSide.RIGHT).consume()
+            .throwing("expected table entries, comma, semicolon, or closing curly bracket")
+    ).map((tokenFinder, entries) -> List.of(new TableConstructor(entries)));
+
+
+
+    Block mainBlock = new Block(null, false);
+    TokenFinder<?> mainFinder = block[0].consume();
+    mainFinder.block = mainBlock;
+
+    try {
+      mainFinder.test(this);
+
+      if (this.peek() != null) throw new LuaParseError("unexpected token (expected statement)");
+    } catch (LuaParseError e) {
+      if (e.at == null) e.at = this.peek();
+    }
+
+    return mainBlock;
 
   }
 }
