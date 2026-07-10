@@ -10,12 +10,10 @@ import underscore.andthereitgoes.shadepile.transpiler.lua.*;
 import underscore.andthereitgoes.shadepile.transpiler.lua.BinaryOperator;
 import underscore.andthereitgoes.shadepile.transpiler.lua.UnaryOperator;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.Token;
+import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.NewlineCountingStringBuilder;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.*;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.*;
 
 
@@ -26,10 +24,19 @@ public class Parser {
   private static class CallInfo extends CallInfoOrPropertyPath {
     public final @Nullable String method;
     public final @NotNull List<@NotNull Expression> arguments;
+    public final PositionedNode at;
 
-    private CallInfo(@Nullable String method, @NotNull List<@NotNull Expression> arguments) {
+    private CallInfo(@Nullable String method, @NotNull List<@NotNull Expression> arguments, Token at) {
+      this(method, arguments, new PositionedNode() {
+        @Override
+        public void emit(NewlineCountingStringBuilder builder) { throw new UnsupportedOperationException(); }
+      }.at(at));
+    }
+
+    private CallInfo(@Nullable String method, @NotNull List<@NotNull Expression> arguments, PositionedNode at) {
       this.method = method;
       this.arguments = arguments;
+      this.at = at;
     }
   }
 
@@ -208,7 +215,7 @@ public class Parser {
     ).map((tokenFinder, objects) -> {
       Block repeatBlock = (Block)objects.getFirst();
       Expression untilExpression = (Expression)objects.getLast();
-      return List.of(new RepeatUntil(untilExpression, repeatBlock, true));
+      return List.of((RepeatUntil)new RepeatUntil(untilExpression, repeatBlock, true).at(untilExpression));
     });
 
     s_for[0] = TokenFinder.ordered(
@@ -260,7 +267,7 @@ public class Parser {
         List.of((Goto)new Goto(((Token.Name)objects.getLast()).text).at((Token)objects.getFirst()))
     );
 
-    s_break[0] = TokenFinder.keyword(KeywordTokenType.BREAK).map((tokenFinder, keywords) -> List.of(new Break()));
+    s_break[0] = TokenFinder.keyword(KeywordTokenType.BREAK).map((tokenFinder, keywords) -> List.of((Break)new Break().at(keywords.getFirst())));
 
     s_return[0] = TokenFinder.ordered(
         (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.RETURN),
@@ -272,12 +279,12 @@ public class Parser {
 
     label[0] = TokenFinder.ordered(
         (TokenFinder<Label>)TokenFinder.ofClass(Token.LabelBoundary.class).consume(),
-        TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of(new Label(names.getFirst().text))),
+        TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of((Label)new Label(names.getFirst().text).at(names.getFirst()))),
         (TokenFinder<Label>)TokenFinder.ofClass(Token.LabelBoundary.class).consume().throwing("expected :: after label name")
     );
 
     stmt[0] = TokenFinder.firstValid(
-        TokenFinder.ofClass(Token.Semicolon.class).map((tokenFinder, tokens) -> List.of(new Empty())),
+        TokenFinder.ofClass(Token.Semicolon.class).map((tokenFinder, tokens) -> List.of((Empty)new Empty().at(tokens.getFirst()))),
         (TokenFinder<StatementLike>)(TokenFinder<?>)label[0],
         (TokenFinder<StatementLike>)(TokenFinder<?>)s_do[0],
         (TokenFinder<StatementLike>)(TokenFinder<?>)s_if[0],
@@ -371,12 +378,13 @@ public class Parser {
     });
 
     term[0] = TokenFinder.firstValid(
-        TokenFinder.ofClass(Token.NilLiteral.class).map((tokenFinder, nilLiterals) -> List.of(new Literal.NilLiteral())),
-        TokenFinder.ofClass(Token.BooleanLiteral.class).map((tokenFinder, booleanLiterals) -> List.of(new Literal.BooleanLiteral(booleanLiterals.getFirst().value))),
+        TokenFinder.ofClass(Token.NilLiteral.class).map((tokenFinder, nilLiterals) -> List.of((Literal.NilLiteral)new Literal.NilLiteral().at(nilLiterals.getFirst()))),
+        TokenFinder.ofClass(Token.BooleanLiteral.class).map((tokenFinder, booleanLiterals) -> List.of((Literal.BooleanLiteral)new Literal.BooleanLiteral(booleanLiterals.getFirst().value).at(booleanLiterals.getFirst()))),
         TokenFinder.ofClass(Token.NumberLiteral.class).map((tokenFinder, numberLiterals) -> {
-          Number value = numberLiterals.getFirst().value;
-          if (value instanceof Double d) return List.of(new Literal.FloatLiteral(d));
-          else if (value instanceof Long l) return List.of(new Literal.IntegerLiteral(l));
+          Token.NumberLiteral lit = numberLiterals.getFirst();
+          Number value = lit.value;
+          if (value instanceof Double d) return List.of((Literal.FloatLiteral)new Literal.FloatLiteral(d).at(lit));
+          else if (value instanceof Long l) return List.of((Literal.IntegerLiteral)new Literal.IntegerLiteral(l).at(lit));
           else throw new IllegalStateException();
         }),
         TokenFinder.ofClass(Token.StringLiteral.class).map((tokenFinder, stringLiterals) -> List.of(new Literal.StringLiteral(stringLiterals.getFirst().value))),
@@ -390,7 +398,7 @@ public class Parser {
         (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.LEFT).consume(),
         () -> expr[0].throwing("expected expression after opening parenthesis"),
         (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.RIGHT).consume().throwing("expected a closing parenthesis")
-    ).map((tokenFinder, expressions) -> List.of(new GroupingExpression(expressions.getFirst())));
+    ).map((tokenFinder, expressions) -> List.of((GroupingExpression)new GroupingExpression(expressions.getFirst()).at(expressions.getFirst())));
 
     expr[0] = opexpr[0]; // in the TypeScript version, logical operations are split
 
@@ -448,7 +456,7 @@ public class Parser {
         CallInfoOrPropertyPath piece = callInfoOrPropertyPaths.get(i);
         expression = switch (piece) {
           case CallInfo callInfo ->
-              new FunctionCall(expression, callInfo.method, callInfo.arguments.toArray(Expression[]::new));
+              (FunctionCall)new FunctionCall(expression, callInfo.method, callInfo.arguments.toArray(Expression[]::new)).at(callInfo.at);
           case PropertyPath propertyPath ->
               new PropertyAccess(expression, propertyPath.item);
           case null, default -> throw new IllegalStateException();
@@ -470,6 +478,50 @@ public class Parser {
     propsfunccall[0] = callpath[0].map(propsfunccallmapper);
     props[0] = callpath[0].map(propsmapper);
     funccall[0] = callpath[0].map(funccallmapper);
+
+    methodsuff[0] = TokenFinder.firstValid(
+        TokenFinder.ordered(
+            (TokenFinder<String>)TokenFinder.ofClass(Token.PropertyColon.class).consume(),
+            name[0].throwing("expected method name after colon")
+        ),
+        TokenFinder.constantValid(Collections.singletonList(null))
+    );
+
+    funccallsuff[0] = TokenFinder.oneOrMore(TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)methodsuff[0],
+        TokenFinder.firstValid(
+            TokenFinder.ordered(
+                (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.LEFT),
+                () -> (TokenFinder<Object>)(TokenFinder<?>)exprlist[0].throwing("expected parameter list after opening parenthesis"),
+                (TokenFinder<Object>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.RIGHT).consume().throwing("expected a closing parenthesis")
+            ),
+            (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.StringLiteral.class).map((tokenFinder, stringLiterals) -> List.of((Literal.StringLiteral)new Literal.StringLiteral(stringLiterals.getFirst().value).at(stringLiterals.getFirst()))),
+            () -> (TokenFinder<Object>)(TokenFinder<?>)tableconstructor[0]
+        )
+    ).map((tokenFinder, objects) -> {
+      if (objects.size() < 2) throw new IllegalStateException();
+      String method = (String)objects.getFirst();
+      Object firstThing = objects.get(1);
+      if (firstThing instanceof Token.Parenthesis token) {
+        return List.of(new CallInfo(method, (List<Expression>)(List<?>)objects.subList(2, objects.size()), token));
+      } else if (firstThing instanceof Expression onlyArgument) {
+        return List.of(new CallInfo(method, List.of(onlyArgument), onlyArgument));
+      } else throw new IllegalStateException();
+    }));
+
+    propertypathsuff[0] = TokenFinder.oneOrMore(TokenFinder.firstValid(
+        TokenFinder.ordered(
+            (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.SquareBracket.class, squareBracket -> squareBracket.side == Token.BracketSide.LEFT).consume(),
+            () -> expr[0],
+            (TokenFinder<Expression>)TokenFinder.ofClassAndAlso(Token.SquareBracket.class, squareBracket -> squareBracket.side == Token.BracketSide.RIGHT).consume()
+        ),
+        (TokenFinder<Expression>)(TokenFinder<?>)TokenFinder.ordered(
+            (TokenFinder<Literal.StringLiteral>)TokenFinder.ofClass(Token.PropertyDot.class).consume(),
+            (TokenFinder<Literal.StringLiteral>)TokenFinder.ofClass(Token.Name.class)
+                .map((tokenFinder, names) -> List.of((Literal.StringLiteral)new Literal.StringLiteral(names.getFirst().text).at(names.getFirst())))
+                .throwing("expected name after property dot")
+        )
+    ).map((tokenFinder, expressions) -> List.of(new PropertyPath(expressions.getFirst()))));
 
   }
 }
