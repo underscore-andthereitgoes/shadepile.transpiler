@@ -10,9 +10,13 @@ public class RepeatUntil extends Statement implements HasChildBlock {
   public final Block body;
   public final Expression condition;
 
-  public RepeatUntil(Expression condition, Block parent) {
+  public RepeatUntil(Expression condition, Block body, boolean bodyDirect) {
     this.condition = condition;
-    this.body = new Block(parent, true);
+    this.body = bodyDirect ? body : new Block(body, true).enableBreak();
+  }
+
+  public RepeatUntil(Expression condition, Block parent) {
+    this(condition, parent, false);
   }
 
   @Override

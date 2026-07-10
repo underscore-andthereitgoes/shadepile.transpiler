@@ -172,17 +172,37 @@ public class Parser {
         }).withParentsTakeContext(),
         () -> (TokenFinder<Do>)block.consume(),
         () -> (TokenFinder<Do>)s_end
-    ).map((tokenFinder, ts) -> List.of(ts.getFirst()));
+    ).map((tokenFinder, dos) -> List.of(dos.getFirst()));
 
     s_while = TokenFinder.ordered(
         () -> TokenFinder.ordered(
             () -> (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.WHILE),
-            () -> (TokenFinder<Object>)(TokenFinder<?>)expr
+            () -> (TokenFinder<Object>)(TokenFinder<?>)expr.throwing("expected condition")
         ).map((tokenFinder, keywords) -> {
           RepeatWhile s = (RepeatWhile)new RepeatWhile((Expression)keywords.getLast(), tokenFinder.block).at((Token)keywords.getFirst());
           tokenFinder.block = s.body;
           return List.of(s);
-        }).withParentsTakeContext()
+        }).withParentsTakeContext(),
+        () -> (TokenFinder<RepeatWhile>)TokenFinder.keyword(KeywordTokenType.DO).consume().throwing("expected \"do\""),
+        () -> (TokenFinder<RepeatWhile>)block.consume(),
+        () -> (TokenFinder<RepeatWhile>)s_end
     );
+
+    s_repeat = TokenFinder.ordered(
+        () -> (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.REPEAT)
+            .map((tokenFinder, keywords) ->
+                List.of(tokenFinder.block = new Block((Block)new Block(tokenFinder.block, true).enableBreak().at(keywords.getFirst())))
+            ).withParentsTakeContext(),
+        () -> (TokenFinder<Object>)block.consume(),
+        () -> (TokenFinder<Object>)TokenFinder.keyword(KeywordTokenType.UNTIL).consume()
+            .throwing("expected statement or \"until\""),
+        () -> (TokenFinder<Object>)(TokenFinder<?>)expr
+            .throwing("expected expression")
+    ).map((tokenFinder, objects) -> {
+      Block repeatBlock = (Block)objects.getFirst();
+      Expression untilExpression = (Expression)objects.getLast();
+      return List.of(new RepeatUntil(untilExpression, repeatBlock, true));
+    });
+
   }
 }
