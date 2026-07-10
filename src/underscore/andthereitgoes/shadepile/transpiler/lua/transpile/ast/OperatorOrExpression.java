@@ -1,4 +1,4 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast;
 
-public interface UnaryOperatorOrExpression extends OperatorOrExpression {
+public interface OperatorOrExpression {
 }

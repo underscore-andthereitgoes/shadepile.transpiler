@@ -69,29 +69,29 @@ public class TokenFinder <T> implements Supplier<TokenFinder<T>> {
 
   /// Test this token finder against a parser, returning the test results if it is valid, or `null` if it isn't.
   public @Nullable List<T> test(@NotNull Parser parser) {
-    return this.testFunc.apply(this, parser);
+    var ptr0 = parser.tell();
+    var results = this.testFunc.apply(this, parser);
+    if (results == null) parser.seek(ptr0);
+    return results;
   }
 
   /// Creates a new token finder with the same test but a mapping function applied afterwards regardless of validity. If the mapping function returns `null`, the finder invalidates.
   @Contract(value = "_ -> new", pure = true)
   public <R> TokenFinder<R> mapAlways(BiFunction<TokenFinder<?>, @Nullable List<T>, @Nullable List<R>> mapper) {
-    final BiFunction<@NotNull TokenFinder<?>, @NotNull Parser, @Nullable List<T>> tf = this.testFunc;
-    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, tf.apply(finder, parser)));
+    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, this.test(parser)));
   }
 
   /// Creates a new token finder with the same test but a mapping function applied afterwards regardless of validity. If the mapping function returns `null`, the finder invalidates.
   @Contract(value = "_ -> new", pure = true)
   public <R> TokenFinder<R> mapAlwaysWithParser(TriFunction<TokenFinder<?>, @NotNull Parser, @Nullable List<T>, @Nullable List<R>> mapper) {
-    final BiFunction<@NotNull TokenFinder<?>, @NotNull Parser, @Nullable List<T>> tf = this.testFunc;
-    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, parser, tf.apply(finder, parser)));
+    return new TokenFinder<>((finder, parser) -> mapper.apply(finder, parser, this.test(parser)));
   }
 
   /// Creates a new token finder with the same test but a mapping function applied afterwards if it's valid. If the mapping function returns `null`, the finder invalidates.
   @Contract(value = "_ -> new", pure = true)
   public <R> TokenFinder<R> map(BiFunction<TokenFinder<?>, @NotNull List<T>, @Nullable List<R>> mapper) {
-    final BiFunction<@NotNull TokenFinder<?>, @NotNull Parser, @Nullable List<T>> test = this.testFunc;
     return new TokenFinder<>((finder, parser) -> {
-      final @Nullable List<T> r = test.apply(finder, parser);
+      final @Nullable List<T> r = this.test(parser);
       if (r != null) return mapper.apply(finder, r);
       return null;
     });

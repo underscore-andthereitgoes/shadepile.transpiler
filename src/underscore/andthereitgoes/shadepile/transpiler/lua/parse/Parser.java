@@ -3,15 +3,17 @@ package underscore.andthereitgoes.shadepile.transpiler.lua.parse;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import underscore.andthereitgoes.shadepile.transpiler.lua.BinaryOperator;
-import underscore.andthereitgoes.shadepile.transpiler.lua.KeywordTokenType;
-import underscore.andthereitgoes.shadepile.transpiler.lua.UnaryOperator;
-import underscore.andthereitgoes.shadepile.transpiler.lua.__PLACEHOLDER__;
+import underscore.andthereitgoes.shadepile.transpiler.lua.*;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.Token;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.BiFunction;
+import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 
@@ -75,7 +77,7 @@ public class Parser {
 
   @SuppressWarnings("unchecked")
   public Block parse() {
-    final TokenFinder<Statement>[] block = new TokenFinder[1];
+    final TokenFinder<StatementLike>[] block = new TokenFinder[1];
     final TokenFinder<?>[] s_end = new TokenFinder[1];
     final TokenFinder<If>[] s_if = new TokenFinder[1];
     final TokenFinder<Do>[] s_do = new TokenFinder[1];
@@ -87,8 +89,8 @@ public class Parser {
     final TokenFinder<Goto>[] s_goto = new TokenFinder[1];
     final TokenFinder<Break>[] s_break = new TokenFinder[1];
     final TokenFinder<Return>[] s_return = new TokenFinder[1];
-    final TokenFinder<Statement>[] stmt = new TokenFinder[1];
     final TokenFinder<Label>[] label = new TokenFinder[1];
+    final TokenFinder<StatementLike>[] stmt = new TokenFinder[1];
     final TokenFinder<UnaryOperator>[] unop = new TokenFinder[1];
     final TokenFinder<BinaryOperator>[] binop = new TokenFinder[1];
     final TokenFinder<UnaryOperatorOrExpression>[] unopexpr = new TokenFinder[1];
@@ -96,6 +98,7 @@ public class Parser {
     final TokenFinder<Expression>[] term = new TokenFinder[1];
     final TokenFinder<Expression>[] groupexpr = new TokenFinder[1];
     final TokenFinder<Expression>[] expr = new TokenFinder[1];
+    final TokenFinder<Expression>[] exprlist = new TokenFinder[1];
     final TokenFinder<String>[] namelist = new TokenFinder[1];
     final TokenFinder<?>[] attr = new TokenFinder[1];
     final TokenFinder<String>[] attrnamelist = new TokenFinder[1];
@@ -120,7 +123,8 @@ public class Parser {
     final TokenFinder<TableConstructor>[] tableconstructor = new TokenFinder[1];
 
     block[0] = TokenFinder.zeroOrMore(() -> stmt[0].map((tokenFinder, statements) -> {
-      statements.forEach(tokenFinder.block::pushStatement);
+      if (statements.size() != 1) throw new IllegalStateException();
+      tokenFinder.block.pushStatement(statements.getFirst());
       return statements;
     }));
 
@@ -205,15 +209,17 @@ public class Parser {
     });
 
     s_for[0] = TokenFinder.ordered(
-        (TokenFinder<For>)TokenFinder.keyword(KeywordTokenType.FOR).consume(),
-        TokenFinder.firstValid(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.FOR),
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.firstValid(
             () -> (TokenFinder<For>)(TokenFinder<?>)s_fornum[0],
             () -> (TokenFinder<For>)(TokenFinder<?>)s_forgen[0],
             (TokenFinder<For>)TokenFinder.invalid().throwing("expected generic (variables in values) or numeric (variable = start, stop[, step]) initializer after \"for\"")
         ).withParentsTakeContext(),
-        (TokenFinder<For>)TokenFinder.keyword(KeywordTokenType.DO).consume().throwing("expected \"do\""),
-        (TokenFinder<For>)block[0].consume(),
-        (TokenFinder<For>)s_end[0]
+        (TokenFinder<Object>)TokenFinder.keyword(KeywordTokenType.DO).consume().throwing("expected \"do\""),
+        (TokenFinder<Object>)block[0].consume(),
+        (TokenFinder<Object>)s_end[0]
+    ).map((tokenFinder, objects) ->
+        List.of((For)((For)objects.getLast()).at((Token)objects.getFirst()))
     );
 
     s_fornum[0] = TokenFinder.ordered(
@@ -228,10 +234,138 @@ public class Parser {
         ))
     ).map((tokenFinder, objects) -> {
       Token.Name variableNameToken = (Token.Name)objects.getFirst();
-      ForNumeric s = new ForNumeric(variableNameToken.text, objects.subList(0, objects.size()).stream().map(o -> (Expression)o).toArray(Expression[]::new), tokenFinder.block);
+      ForNumeric s = new ForNumeric(variableNameToken.text, objects.subList(1, objects.size()).stream().map(o -> (Expression)o).toArray(Expression[]::new), tokenFinder.block);
       tokenFinder.block = s.body;
       return List.of(s);
     }).withParentsTakeContext();
+
+    s_forgen[0] = TokenFinder.ordered(
+        () -> (TokenFinder<Object>)(TokenFinder<?>)namelist[0].group(),
+        (TokenFinder<Object>)TokenFinder.keyword(KeywordTokenType.IN).consume(),
+        () -> (TokenFinder<Object>)(TokenFinder<?>)exprlist[0].throwing("expected expression or expression list after \"for variables in\"").group()
+    ).map((tokenFinder, objects) -> {
+      List<String> names = (List<String>)objects.getFirst();
+      List<Expression> expressions = (List<Expression>)objects.getLast();
+      ForGeneric s = new ForGeneric(names.toArray(String[]::new), expressions.toArray(Expression[]::new), tokenFinder.block);
+      tokenFinder.block = s.body;
+      return List.of(s);
+    }).withParentsTakeContext();
+
+    s_goto[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.GOTO),
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.Name.class).throwing("expected name after \"goto\"")
+    ).map((tokenFinder, objects) ->
+        List.of((Goto)new Goto(((Token.Name)objects.getLast()).text).at((Token)objects.getFirst()))
+    );
+
+    s_break[0] = TokenFinder.keyword(KeywordTokenType.BREAK).map((tokenFinder, keywords) -> List.of(new Break()));
+
+    s_return[0] = TokenFinder.ordered(
+        (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.RETURN),
+        () -> (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.optional(exprlist[0]).group()
+    ).map((tokenFinder, objects) ->
+        List.of((Return)new Return(((List<Expression>)objects.getLast()).toArray(Expression[]::new)).at((Token)objects.getFirst()))
+    );
+
+    label[0] = TokenFinder.ordered(
+        (TokenFinder<Label>)TokenFinder.ofClass(Token.LabelBoundary.class).consume(),
+        TokenFinder.ofClass(Token.Name.class).map((tokenFinder, names) -> List.of(new Label(names.getFirst().text))),
+        (TokenFinder<Label>)TokenFinder.ofClass(Token.LabelBoundary.class).consume().throwing("expected :: after label name")
+    );
+
+    stmt[0] = TokenFinder.firstValid(
+        TokenFinder.ofClass(Token.Semicolon.class).map((tokenFinder, tokens) -> List.of(new Empty())),
+        (TokenFinder<StatementLike>)(TokenFinder<?>)label[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_do[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_if[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_for[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_while[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_repeat[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_goto[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_break[0],
+        (TokenFinder<StatementLike>)(TokenFinder<?>)s_return[0],
+        () -> (TokenFinder<StatementLike>)(TokenFinder<?>)funcdec[0],
+        () -> (TokenFinder<StatementLike>)(TokenFinder<?>)globaldec[0],
+        () -> (TokenFinder<StatementLike>)(TokenFinder<?>)localdec[0],
+        () -> (TokenFinder<StatementLike>)(TokenFinder<?>)assignment[0],
+        () -> (TokenFinder<StatementLike>)(TokenFinder<?>)funccall[0]
+    );
+
+    unop[0] = TokenFinder.ofClass(Token.Operator.class).map((tokenFinder, operators) -> {
+      UnaryOperator unEq = operators.getFirst().type.unaryEquivalent;
+      return unEq != null ? List.of(unEq) : null;
+    });
+    binop[0] = TokenFinder.ofClass(Token.Operator.class).map((tokenFinder, operators) -> {
+      BinaryOperator binEq = operators.getFirst().type.binaryEquivalent;
+      return binEq != null ? List.of(binEq) : null;
+    });
+
+    unopexpr[0] = TokenFinder.ordered(
+        (TokenFinder<UnaryOperatorOrExpression>)(TokenFinder<?>)TokenFinder.zeroOrMore(unop[0]),
+        () -> (TokenFinder<UnaryOperatorOrExpression>)(TokenFinder<?>)term[0]
+    );
+
+    opexpr[0] = TokenFinder.ordered(
+        (TokenFinder<OperatorOrExpression>)(TokenFinder<?>)unopexpr[0],
+        TokenFinder.zeroOrMore(TokenFinder.ordered(
+            (TokenFinder<OperatorOrExpression>)(TokenFinder<?>)binop[0],
+            (TokenFinder<OperatorOrExpression>)(TokenFinder<?>)unopexpr[0]
+                .throwing("expected expression after operator")
+        ))
+    ).map((tokenFinder, opExps) -> {
+      final ArrayList<OperatorOrExpression> parts = new ArrayList<>(opExps);
+
+      final IntConsumer[] collapseUnaryOperation = new IntConsumer[1];
+      collapseUnaryOperation[0] = (index) -> {
+        OperatorOrExpression part = parts.get(index);
+        if (part instanceof UnaryOperator operator) {
+          OperatorOrExpression partAfter = parts.get(index + 1);
+          if (partAfter instanceof UnaryOperator) {
+            collapseUnaryOperation[0].accept(index + 1);
+          } else if (partAfter instanceof Expression operand) {
+            parts.remove(index);
+            parts.set(index, new UnaryOperation(operator, operand));
+          } else throw new IllegalStateException();
+        }
+      };
+
+      for (OperatorTokenType.ParseOrderItem parseOrderItem: OperatorTokenType.order) {
+        int start = 0, stop = parts.size() - 1, step = 1;
+        if (parseOrderItem.reverse) {
+          start = stop;
+          stop = 0;
+          step = -1;
+        }
+        for (int i = start; i != stop; i += step) {
+          if (i < 0 || i >= parts.size()) break;
+          OperatorOrExpression part = parts.get(i);
+          if (parseOrderItem instanceof OperatorTokenType.ParseOrderItemBinary orderItemBinary) {
+            if (part instanceof BinaryOperator operator) {
+              if (orderItemBinary.operators.contains(part)) {
+                collapseUnaryOperation[0].accept(i + 1);
+                Expression leftOperand = (Expression)parts.get(i - 1);
+                Expression rightOperand = (Expression)parts.get(i + 1);
+                parts.remove(i - 1);
+                parts.remove(i - 1);
+                parts.set(i - 1, new BinaryOperation(leftOperand, rightOperand, operator));
+                i--;
+              }
+            }
+          } else if (parseOrderItem instanceof OperatorTokenType.ParseOrderItemUnary orderItemUnary) {
+            if (part instanceof UnaryOperator) {
+              if (orderItemUnary.operators.contains(part)) {
+                collapseUnaryOperation[0].accept(i);
+              }
+            }
+          }
+        }
+      }
+
+      if (parts.size() != 1) throw new IllegalStateException();
+      if (!(parts.getFirst() instanceof Expression)) throw new IllegalStateException();
+
+      return (List<Expression>)(List<?>)parts;
+    });
 
   }
 }

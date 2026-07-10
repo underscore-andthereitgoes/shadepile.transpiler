@@ -5,6 +5,7 @@ import java.util.Arrays;
 
 public enum KeywordTokenType {
   FOR("for"),
+  IN("in"),
   DO("do"),
   END("end"),
   IF("if"),

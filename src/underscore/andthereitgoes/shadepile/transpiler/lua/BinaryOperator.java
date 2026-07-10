@@ -1,6 +1,9 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua;
 
-public enum BinaryOperator {
+import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.OperatorOrExpression;
+
+
+public enum BinaryOperator implements OperatorOrExpression {
   AND("and", true),
   OR("or", true),
   LT("lt"),

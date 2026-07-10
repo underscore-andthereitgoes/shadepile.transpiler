@@ -1,6 +1,9 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Arrays;
+import java.util.Set;
 
 
 public enum OperatorTokenType {
@@ -29,8 +32,8 @@ public enum OperatorTokenType {
   ;
 
   public final String text;
-  public final UnaryOperator unaryEquivalent;
-  public final BinaryOperator binaryEquivalent;
+  public final @Nullable UnaryOperator unaryEquivalent;
+  public final @Nullable BinaryOperator binaryEquivalent;
   public final boolean secondArgumentSupplied;
   OperatorTokenType(String text, UnaryOperator u, BinaryOperator b) {
     this.text = text;
@@ -50,4 +53,58 @@ public enum OperatorTokenType {
     Arrays.sort(descendingLength = values(), (s1, s2) -> Integer.compare(s2.text.length(), s1.text.length()));
   }
 
+  public static final ParseOrderItem[] order = new ParseOrderItem[]{
+      new ParseOrderItemBinary(BinaryOperator.POW, true),
+      new ParseOrderItemUnary(UnaryOperator.BNOT, UnaryOperator.UNM, UnaryOperator.LEN, UnaryOperator.NOT),
+      new ParseOrderItemBinary(BinaryOperator.MOD, BinaryOperator.IDIV, BinaryOperator.DIV, BinaryOperator.MUL),
+      new ParseOrderItemBinary(BinaryOperator.SUB, BinaryOperator.ADD),
+      new ParseOrderItemBinary(BinaryOperator.CONCAT, true),
+      new ParseOrderItemBinary(BinaryOperator.SHR, BinaryOperator.SHL),
+      new ParseOrderItemBinary(BinaryOperator.BAND),
+      new ParseOrderItemBinary(BinaryOperator.BXOR),
+      new ParseOrderItemBinary(BinaryOperator.BOR),
+      new ParseOrderItemBinary(BinaryOperator.EQ, BinaryOperator.NE, BinaryOperator.GE, BinaryOperator.LE, BinaryOperator.GT, BinaryOperator.LT),
+  };
+
+  public static abstract sealed class ParseOrderItem {
+    public final boolean reverse;
+
+    protected ParseOrderItem(boolean reverse) {
+      this.reverse = reverse;
+    }
+  }
+  public static non-sealed class ParseOrderItemUnary extends ParseOrderItem {
+    public final Set<UnaryOperator> operators;
+
+    public ParseOrderItemUnary(UnaryOperator[] operators, boolean reverse) {
+      super(reverse);
+      this.operators = Set.of(operators);
+    }
+    public ParseOrderItemUnary(UnaryOperator... operators) {
+      this(operators, false);
+    }
+    public ParseOrderItemUnary(UnaryOperator operator, boolean reverse) {
+      this(new UnaryOperator[]{operator}, reverse);
+    }
+    public ParseOrderItemUnary(UnaryOperator operator) {
+      this(operator, false);
+    }
+  }
+  public static non-sealed class ParseOrderItemBinary extends ParseOrderItem {
+    public final Set<BinaryOperator> operators;
+
+    public ParseOrderItemBinary(BinaryOperator[] operators, boolean reverse) {
+      super(reverse);
+      this.operators = Set.of(operators);
+    }
+    public ParseOrderItemBinary(BinaryOperator... operators) {
+      this(operators, false);
+    }
+    public ParseOrderItemBinary(BinaryOperator operator, boolean reverse) {
+      this(new BinaryOperator[]{operator}, reverse);
+    }
+    public ParseOrderItemBinary(BinaryOperator operator) {
+      this(operator, false);
+    }
+  }
 }
