@@ -32,7 +32,7 @@ public class Assignment extends Statement {
           builder.append(',');
           if (values.length > 0) {
             values[0].emitNewlines(builder);
-            values[0].emitSingle(builder);
+            values[0].emit(builder);
           } else builder.append("null");
           builder.append(");");
         }
