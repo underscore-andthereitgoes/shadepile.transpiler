@@ -67,6 +67,13 @@ public class LuaRuntime {
     throw new LuaRuntimeError(methodName + " expected a number for argument " + argumentIndex);
   }
 
+  /// Accepts an argument as a `Double` or `Long` if possible (without string conversion), or throws an error if not.
+  public static Number assertNumber(Object argument, String methodName, int argumentIndex, @NotNull LuaRuntime runtime) {
+    if (argument instanceof Double d) return d;
+    if (argument instanceof Long l) return l;
+    throw new LuaRuntimeError(methodName + " expected a number for argument " + argumentIndex + ", got " + runtime.o.type(argument));
+  }
+
   /// Converts an argument to a `double` if possible (without string conversion), or throws an error if not.
   public static double assertDouble(Object argument, String methodName, int argumentIndex) {
     if (argument instanceof Double d) return d;
@@ -74,11 +81,25 @@ public class LuaRuntime {
     throw new LuaRuntimeError(methodName + " expected a number for argument " + argumentIndex);
   }
 
+  /// Converts an argument to a `double` if possible (without string conversion), or throws an error if not.
+  public static double assertDouble(Object argument, String methodName, int argumentIndex, @NotNull LuaRuntime runtime) {
+    if (argument instanceof Double d) return d;
+    if (argument instanceof Long l) return l.doubleValue();
+    throw new LuaRuntimeError(methodName + " expected a number for argument " + argumentIndex + ", got " + runtime.o.type(argument));
+  }
+
   /// Converts an argument to a `long` if possible (without string conversion), or throws an error if not.
   public static long assertInteger(Object argument, String methodName, int argumentIndex) {
     if (argument instanceof Long l) return l;
-    if (argument instanceof Double d && !d.isNaN() && !d.isInfinite() && d == Math.floor(d)) return d.longValue();
+    if (argument instanceof Double d && Double.isFinite(d) && d == Math.floor(d)) return d.longValue();
     throw new LuaRuntimeError(methodName + " expected an integer for argument " + argumentIndex);
+  }
+
+  /// Converts an argument to a `long` if possible (without string conversion), or throws an error if not.
+  public static long assertInteger(Object argument, String methodName, int argumentIndex, @NotNull LuaRuntime runtime) {
+    if (argument instanceof Long l) return l;
+    if (argument instanceof Double d && Double.isFinite(d) && d == Math.floor(d)) return d.longValue();
+    throw new LuaRuntimeError(methodName + " expected an integer for argument " + argumentIndex + ", got " + runtime.o.type(argument));
   }
 
   public final Utils u;
@@ -129,9 +150,10 @@ public class LuaRuntime {
     }
 
     public @Nullable Object @NotNull [] multires(@Nullable Object... parameters) {
-      if (parameters.length == 0) return parameters;
+      int numP = parameters.length;
+      if (numP == 0) return parameters;
 
-      int lastI = parameters.length - 1;
+      int lastI = numP - 1;
       @Nullable Object lastP = parameters[lastI];
 
       final @Nullable Object @NotNull [] parameters2;
@@ -140,15 +162,16 @@ public class LuaRuntime {
         parameters2 = new Object[lastI + lastPMulti.length];
         for (int i = 0; i < lastI; i++) {
           Object p = parameters[i];
-          if (p instanceof Object[] pMulti) parameters2[lastI] = pMulti.length > 0 ? pMulti[0] : null;
-          else parameters2[lastI] = p;
+          if (p instanceof Object[] pMulti) parameters2[i] = pMulti.length > 0 ? pMulti[0] : null;
+          else parameters2[i] = p;
         }
         System.arraycopy(lastPMulti, 0, parameters2, lastI, lastPMulti.length);
       } else {
-        parameters2 = new Object[parameters.length];
-        for (Object p: parameters) {
-          if (p instanceof Object[] pMulti) parameters2[lastI] = pMulti.length > 0 ? pMulti[0] : null;
-          else parameters2[lastI] = p;
+        parameters2 = new Object[numP];
+        for (int i = 0; i < numP; i++) {
+          Object p = parameters[i];
+          if (p instanceof Object[] pMulti) parameters2[i] = pMulti.length > 0 ? pMulti[0] : null;
+          else parameters2[i] = p;
         }
       }
 
@@ -237,9 +260,7 @@ public class LuaRuntime {
     }
 
     public Object[] callbound(Function<Object[],Object[]> func) {
-      Object[] ret = func.apply(new Object[0]);
-      if (ret == null) ret = new Object[0];
-      return ret;
+      return func.apply(new Object[0]);
     }
 
     public Object[] fcall(Object target, Object... parameters) {
@@ -895,7 +916,7 @@ public class LuaRuntime {
       final String mmn = "__bnot";
 
       if (operand instanceof Double d) {
-        if (d == Math.floor(d)) operand = d.longValue();
+        if (Double.isFinite(d) && d == Math.floor(d)) operand = d.longValue();
         else throw new LuaRuntimeError("cannot convert non-integral float to integer");
       }
       switch (operand) {
@@ -920,13 +941,13 @@ public class LuaRuntime {
       final String mmn = "__band";
 
       if (left instanceof Double d) {
-        if (d == Math.floor(d)) left = d.longValue();
+        if (Double.isFinite(d) && d == Math.floor(d)) left = d.longValue();
         else throw new LuaRuntimeError("cannot convert non-integral float to integer");
       } else if (left instanceof String s) {
         try { left = Long.valueOf(s); } catch (NumberFormatException ignored) {}
       }
       if (right instanceof Double d) {
-        if (d == Math.floor(d)) right = d.longValue();
+        if (Double.isFinite(d) && d == Math.floor(d)) right = d.longValue();
         else throw new LuaRuntimeError("cannot convert non-integral float to integer");
       } else if (right instanceof String s) {
         try { right = Long.valueOf(s); } catch (NumberFormatException ignored) {}
@@ -946,13 +967,13 @@ public class LuaRuntime {
       final String mmn = "__bor";
 
       if (left instanceof Double d) {
-        if (d == Math.floor(d)) left = d.longValue();
+        if (Double.isFinite(d) && d == Math.floor(d)) left = d.longValue();
         else throw new LuaRuntimeError("cannot convert non-integral float to integer");
       } else if (left instanceof String s) {
         try { left = Long.valueOf(s); } catch (NumberFormatException ignored) {}
       }
       if (right instanceof Double d) {
-        if (d == Math.floor(d)) right = d.longValue();
+        if (Double.isFinite(d) && d == Math.floor(d)) right = d.longValue();
         else throw new LuaRuntimeError("cannot convert non-integral float to integer");
       } else if (right instanceof String s) {
         try { right = Long.valueOf(s); } catch (NumberFormatException ignored) {}
@@ -974,13 +995,13 @@ public class LuaRuntime {
       if (left != null && right != null) {
 
         if (left instanceof Double d) {
-          if (d == Math.floor(d)) left = d.longValue();
+          if (Double.isFinite(d) && d == Math.floor(d)) left = d.longValue();
           else throw new LuaRuntimeError("cannot convert non-integral float to integer");
         } else if (left instanceof String s) {
           try { left = Long.valueOf(s); } catch (NumberFormatException ignored) {}
         }
         if (right instanceof Double d) {
-          if (d == Math.floor(d)) right = d.longValue();
+          if (Double.isFinite(d) && d == Math.floor(d)) right = d.longValue();
           else throw new LuaRuntimeError("cannot convert non-integral float to integer");
         } else if (right instanceof String s) {
           try { right = Long.valueOf(s); } catch (NumberFormatException ignored) {}
@@ -992,6 +1013,62 @@ public class LuaRuntime {
         if (mm != null) return LuaRuntime.this.u.single(LuaRuntime.this.f.fcall(null, mm, left, right));
       }
       throw new LuaRuntimeError("cannot use ~ (" + mmn + ") with " + type(left) + " and " + type(right));
+    }
+
+    public Object shl(Object left, Object right) {
+      left = LuaRuntime.this.u.single(left); right = LuaRuntime.this.u.single(right);
+
+      final String mmn = "__shl";
+
+      if (left != null && right != null) {
+
+        if (left instanceof Double d) {
+          if (Double.isFinite(d) && d == Math.floor(d)) left = d.longValue();
+          else throw new LuaRuntimeError("cannot convert non-integral float to integer");
+        } else if (left instanceof String s) {
+          try { left = Long.valueOf(s); } catch (NumberFormatException ignored) {}
+        }
+        if (right instanceof Double d) {
+          if (Double.isFinite(d) && d == Math.floor(d)) right = d.longValue();
+          else throw new LuaRuntimeError("cannot convert non-integral float to integer");
+        } else if (right instanceof String s) {
+          try { right = Long.valueOf(s); } catch (NumberFormatException ignored) {}
+        }
+
+        if (left instanceof Long a && right instanceof Long b) return a << b;
+
+        var mm = getEitherMetamethod(left, right, mmn);
+        if (mm != null) return LuaRuntime.this.u.single(LuaRuntime.this.f.fcall(null, mm, left, right));
+      }
+      throw new LuaRuntimeError("cannot use << (" + mmn + ") with " + type(left) + " and " + type(right));
+    }
+
+    public Object shr(Object left, Object right) {
+      left = LuaRuntime.this.u.single(left); right = LuaRuntime.this.u.single(right);
+
+      final String mmn = "__shr";
+
+      if (left != null && right != null) {
+
+        if (left instanceof Double d) {
+          if (Double.isFinite(d) && d == Math.floor(d)) left = d.longValue();
+          else throw new LuaRuntimeError("cannot convert non-integral float to integer");
+        } else if (left instanceof String s) {
+          try { left = Long.valueOf(s); } catch (NumberFormatException ignored) {}
+        }
+        if (right instanceof Double d) {
+          if (Double.isFinite(d) && d == Math.floor(d)) right = d.longValue();
+          else throw new LuaRuntimeError("cannot convert non-integral float to integer");
+        } else if (right instanceof String s) {
+          try { right = Long.valueOf(s); } catch (NumberFormatException ignored) {}
+        }
+
+        if (left instanceof Long a && right instanceof Long b) return a >> b;
+
+        var mm = getEitherMetamethod(left, right, mmn);
+        if (mm != null) return LuaRuntime.this.u.single(LuaRuntime.this.f.fcall(null, mm, left, right));
+      }
+      throw new LuaRuntimeError("cannot use >> (" + mmn + ") with " + type(left) + " and " + type(right));
     }
 
     public Object concat(Object left, Object right) {

@@ -23,6 +23,10 @@ public class MainTest {
         end
         
         print("hello, world!")
+        
+        print(1 << 10)
+        
+        print(bit32.band(9237589, 23587))
         """;
 
     Tokenizer tokenizer = new Tokenizer(inputCode);
