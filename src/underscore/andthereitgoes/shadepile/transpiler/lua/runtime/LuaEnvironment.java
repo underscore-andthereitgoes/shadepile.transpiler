@@ -2,6 +2,7 @@ package underscore.andthereitgoes.shadepile.transpiler.lua.runtime;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Objects;
 import java.util.random.RandomGenerator;
 
 
@@ -16,11 +17,13 @@ public abstract class LuaEnvironment extends LuaTable {
     rng = new xoshiro256ss();
   }
 
-  public void addGlobals(boolean withFiguraExtras) {
+  public abstract void print(Object[] args);
+
+  public void addGlobals() {
     //
   }
 
-  public void addMathModule(boolean withFiguraExtras) {
+  public LuaTable addMathModule() {
     LuaTable math = new LuaTable();
 
     math.putFunction("abs", (Object[] params) -> {
@@ -183,21 +186,124 @@ public abstract class LuaEnvironment extends LuaTable {
       return new Object[]{Long.compareUnsigned(m, n) < 0};
     });
 
-    if (withFiguraExtras) {
-      math.putFunction("clamp", (Object[] params) -> {
-        Number value = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.clamp()", 1);
-        Number min = LuaRuntime.assertNumber(params.length > 1 ? params[1] : null, "math.clamp()", 2);
-        Number max = LuaRuntime.assertNumber(params.length > 2 ? params[2] : null, "math.clamp()", 3);
-        if (value instanceof Long v && min instanceof Long m && max instanceof Long n) {
-          return new Object[]{m > n ? n : v > n ? n : v < m ? m : v};
-        } else {
-          double v = value.doubleValue();
-          double m = min.doubleValue();
-          double n = max.doubleValue();
-          //noinspection ManualMinMaxCalculation
-          return new Object[]{m > n ? n : v > n ? n : v < m ? m : v};
-        }
-      });
-    }
+    this.put("math", math);
+    return math;
   }
+
+  public LuaTable addBit32Module() {
+    LuaTable bit32 = new LuaTable();
+
+    bit32.putFunction("arshift", (Object[] params) -> {
+      int x = (int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.arshift()", 1);
+      int disp = (int)LuaRuntime.assertInteger(params.length > 1 ? params[1] : null, "bit32.arshift()", 2);
+      return new Object[]{(double)(x >> disp)};
+    });
+
+    bit32.putFunction("band", (Object[] params) -> {
+      int result = 0xffffffff;
+      if (params.length == 0) throw new LuaRuntimeError("bit32.band() needs at least 1 argument");
+      for (int i = 0, n = params.length; i < n; i++) {
+        Object param = params[i];
+        int x = (int)LuaRuntime.assertInteger(param, "bit32.band()", i + 1);
+        result &= x;
+      }
+      return new Object[]{(double)result};
+    });
+
+    bit32.putFunction("bnot", (Object[] params) -> new Object[]{(double)~(int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.bnot()", 1)});
+
+    bit32.putFunction("bor", (Object[] params) -> {
+      int result = 0x00000000;
+      if (params.length == 0) throw new LuaRuntimeError("bit32.bor() needs at least 1 argument");
+      for (int i = 0, n = params.length; i < n; i++) {
+        Object param = params[i];
+        int x = (int)LuaRuntime.assertInteger(param, "bit32.bor()", i + 1);
+        result |= x;
+      }
+      return new Object[]{(double)result};
+    });
+
+    bit32.putFunction("btest", (Object[] params) -> {
+      int result = 0xffffffff;
+      if (params.length == 0) throw new LuaRuntimeError("bit32.btest() needs at least 1 argument");
+      for (int i = 0, n = params.length; i < n; i++) {
+        Object param = params[i];
+        int x = (int)LuaRuntime.assertInteger(param, "bit32.btest()", i + 1);
+        result &= x;
+      }
+      return new Object[]{result != 0};
+    });
+
+    bit32.putFunction("bxor", (Object[] params) -> {
+      int result = 0x00000000;
+      if (params.length == 0) throw new LuaRuntimeError("bit32.bxor() needs at least 1 argument");
+      for (int i = 0, n = params.length; i < n; i++) {
+        Object param = params[i];
+        int x = (int)LuaRuntime.assertInteger(param, "bit32.bxor()", i + 1);
+        result ^= x;
+      }
+      return new Object[]{(double)result};
+    });
+
+    bit32.putFunction("extract", (Object[] params) -> {
+      int n = (int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.extract()", 1);
+      int field = (int)LuaRuntime.assertInteger(params.length > 1 ? params[1] : null, "bit32.extract()", 2);
+      int width = (int)LuaRuntime.assertInteger(Objects.requireNonNullElse(params.length > 2 ? params[2] : null, 31), "bit32.extract()", 3);
+      return new Object[]{(double)(n & (0xffffffff << field) & ~(int)(0xfffffff8 << width))};
+    });
+
+    bit32.putFunction("replace", (Object[] params) -> {
+      int n = (int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.replace()", 1);
+      int v = (int)LuaRuntime.assertInteger(params.length > 1 ? params[1] : null, "bit32.replace()", 2);
+      int field = (int)LuaRuntime.assertInteger(params.length > 2 ? params[2] : null, "bit32.replace()", 3);
+      int width = (int)LuaRuntime.assertInteger(Objects.requireNonNullElse(params.length > 3 ? params[3] : null, 31), "bit32.replace()", 4);
+      int mask = ~(int)(0xfffffff8 << width);
+      return new Object[]{(double)(n & (0xffffffff << field) & ~mask | (v << field) & mask)};
+    });
+
+    bit32.putFunction("lrotate", (Object[] params) -> {
+      int x = (int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.lrotate()", 1);
+      int disp = (int)LuaRuntime.assertInteger(params.length > 1 ? params[1] : null, "bit32.lrotate()", 2);
+      return new Object[]{(double)Integer.rotateLeft(x, disp)};
+    });
+
+    bit32.putFunction("lshift", (Object[] params) -> {
+      int x = (int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.lshift()", 1);
+      int disp = (int)LuaRuntime.assertInteger(params.length > 1 ? params[1] : null, "bit32.lshift()", 2);
+      return new Object[]{(double)(x << disp)};
+    });
+
+    bit32.putFunction("rrotate", (Object[] params) -> {
+      int x = (int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.rrotate()", 1);
+      int disp = (int)LuaRuntime.assertInteger(params.length > 1 ? params[1] : null, "bit32.rrotate()", 2);
+      return new Object[]{(double)Integer.rotateRight(x, disp)};
+    });
+
+    bit32.putFunction("rshift", (Object[] params) -> {
+      int x = (int)LuaRuntime.assertInteger(params.length > 0 ? params[0] : null, "bit32.rshift()", 1);
+      int disp = (int)LuaRuntime.assertInteger(params.length > 1 ? params[1] : null, "bit32.rshift()", 2);
+      return new Object[]{(double)(x >> disp)};
+    });
+
+    this.put("bit32", bit32);
+    return bit32;
+  }
+
+  public LuaTable addTableModule() {
+    LuaTable table = new LuaTable();
+
+    this.put("table", table);
+    return table;
+  }
+
+  public LuaTable addStringModule(boolean applyMetatable) {
+    LuaTable string = new LuaTable();
+
+    this.put("string", string);
+    if (applyMetatable) {
+      this.runtime.p.primitiveMetatableString.put("__index", string.copy().readonly());
+    }
+    return string;
+  }
+
 }

@@ -15,6 +15,9 @@ public class LuaTable implements LuaTableOrUserdata {
   private @Nullable Object @NotNull [] list;
   private final @NotNull Hashtable<Object, Object> table;
 
+  private boolean isReadOnly;
+  public boolean isReadOnlyForLua;
+
   private LuaTable(Object[] list, Hashtable<Object, Object> table) {
     this.list = list;
     this.table = table;
@@ -22,6 +25,33 @@ public class LuaTable implements LuaTableOrUserdata {
 
   public LuaTable() {
     this(new Object[0], new Hashtable<>());
+  }
+
+  /// Returns a shallow copy of this table (with the same metatable object and writing enabled).
+  @Contract(value = "-> new", pure = true)
+  public LuaTable copy() {
+    var lt = new LuaTable();
+    lt.metatable = this.metatable;
+    lt.putAll(this);
+    return lt;
+  }
+
+  @Contract("-> this")
+  public LuaTable readonlyInLua() {
+    this.isReadOnlyForLua = true;
+    return this;
+  }
+
+  @Contract("-> this")
+  public LuaTable readonly() {
+    this.isReadOnly = true;
+    return this;
+  }
+
+  @Contract("-> this")
+  public LuaTable readwrite() {
+    this.isReadOnly = false;
+    return this;
   }
 
   public static LuaTable ofList(Object[] list) {
@@ -62,6 +92,7 @@ public class LuaTable implements LuaTableOrUserdata {
 
   @Override
   public void setMetatable(@Nullable LuaTableOrUserdata metatable) {
+    if (this.isReadOnly) return;
     this.metatable = metatable;
   }
 
@@ -92,6 +123,7 @@ public class LuaTable implements LuaTableOrUserdata {
   }
 
   synchronized public void putFunction(Object key, Function<Object[],Object[]> function) {
+    if (this.isReadOnly) return;
     this.put(key, function);
   }
 
@@ -100,6 +132,7 @@ public class LuaTable implements LuaTableOrUserdata {
   synchronized public @Nullable Object put(Object key, Object value) {
     if (value == null) return this.remove(key);
     key = correctKey(key);
+    if (this.isReadOnly) return this;
     if (couldBeInList(key)) {
       int k = (int)(long)(Long)key;
       Object v0 = this.list[k - 1];
@@ -126,6 +159,7 @@ public class LuaTable implements LuaTableOrUserdata {
   @Contract(value = "null -> fail")
   synchronized public Object remove(Object key) {
     key = correctKey(key);
+    if (this.isReadOnly) return this;
     if (isInList(key)) {
       int k = (int)(long)(Long)key - 1;
       Object v0 = this.list[k];
@@ -148,6 +182,7 @@ public class LuaTable implements LuaTableOrUserdata {
 
   @Override
   synchronized public void clear() {
+    if (this.isReadOnly) return;
     this.list = new Object[0];
     this.table.clear();
   }

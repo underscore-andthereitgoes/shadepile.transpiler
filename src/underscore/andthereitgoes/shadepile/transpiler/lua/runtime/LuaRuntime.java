@@ -60,18 +60,21 @@ public class LuaRuntime {
     }
   }
 
+  /// Accepts an argument as a `Double` or `Long` if possible (without string conversion), or throws an error if not.
   public static Number assertNumber(Object argument, String methodName, int argumentIndex) {
     if (argument instanceof Double d) return d;
     if (argument instanceof Long l) return l;
     throw new LuaRuntimeError(methodName + " expected a number for argument " + argumentIndex);
   }
 
+  /// Converts an argument to a `double` if possible (without string conversion), or throws an error if not.
   public static double assertDouble(Object argument, String methodName, int argumentIndex) {
     if (argument instanceof Double d) return d;
     if (argument instanceof Long l) return l.doubleValue();
     throw new LuaRuntimeError(methodName + " expected a number for argument " + argumentIndex);
   }
 
+  /// Converts an argument to a `long` if possible (without string conversion), or throws an error if not.
   public static long assertInteger(Object argument, String methodName, int argumentIndex) {
     if (argument instanceof Long l) return l;
     if (argument instanceof Double d && !d.isNaN() && !d.isInfinite() && d == Math.floor(d)) return d.longValue();
@@ -1055,10 +1058,10 @@ public class LuaRuntime {
   public class Props {
     private Props() {}
 
-    public LuaTableOrUserdata primitiveMetatableNumber = new LuaTable();
-    public LuaTableOrUserdata primitiveMetatableString = new LuaTable();
-    public LuaTableOrUserdata primitiveMetatableBoolean = new LuaTable();
-    public LuaTableOrUserdata primitiveMetatableFunction = new LuaTable();
+    public LuaTableOrUserdata primitiveMetatableNumber = new LuaTable().readonlyInLua();
+    public LuaTableOrUserdata primitiveMetatableString = new LuaTable().readonlyInLua();
+    public LuaTableOrUserdata primitiveMetatableBoolean = new LuaTable().readonlyInLua();
+    public LuaTableOrUserdata primitiveMetatableFunction = new LuaTable().readonlyInLua();
 
     public LuaPropertyReference ref(Object target, long property) {
       target = LuaRuntime.this.u.single(target);
@@ -1096,11 +1099,13 @@ public class LuaRuntime {
     }
     public void setRaw(LuaPropertyReference ref, Object value) {
       value = LuaRuntime.this.u.single(value);
-      if (ref.isNowhere || ref.target == null) return;
+      LuaTableOrUserdata target = ref.target;
+      if (ref.isNowhere || target == null) return;
+      if (target instanceof LuaTable luaTable && luaTable.isReadOnlyForLua) return;
       if (value == null) {
-        ref.target.remove(ref.property);
+        target.remove(ref.property);
       } else {
-        ref.target.put(ref.property, value);
+        target.put(ref.property, value);
       }
     }
     private void setRecurse(LuaPropertyReference reference, Object value) {
@@ -1124,6 +1129,8 @@ public class LuaRuntime {
           }
         }
       }
+
+      if (currentTarget instanceof LuaTable luaTable && luaTable.isReadOnlyForLua) return;
 
       if (value == null) {
         currentTarget.remove(originalReference.property);

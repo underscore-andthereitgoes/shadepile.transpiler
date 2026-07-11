@@ -7,6 +7,7 @@ import underscore.andthereitgoes.shadepile.transpiler.lua.parse.LuaParseError;
 import underscore.andthereitgoes.shadepile.transpiler.lua.parse.Parser;
 import underscore.andthereitgoes.shadepile.transpiler.lua.runtime.LuaEnvironment;
 import underscore.andthereitgoes.shadepile.transpiler.lua.runtime.LuaRuntime;
+import underscore.andthereitgoes.shadepile.transpiler.lua.runtime.LuaRuntimeError;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.LuaSyntaxError;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.Token;
 import underscore.andthereitgoes.shadepile.transpiler.lua.tokenize.Tokenizer;
@@ -30,7 +31,7 @@ public final class LuaExecutionHelper {
   }
 
   @SuppressWarnings("DuplicateThrows")
-  public static Object loadLua(LuaEnvironment environment, String luaCode) throws LuaSyntaxError, LuaParseError, LuaCompileError, RuntimeException {
+  public static Object loadLua(LuaEnvironment environment, String luaCode) throws LuaSyntaxError, LuaParseError, LuaCompileError, LuaRuntimeError, RuntimeException {
 
     Tokenizer tokenizer = new Tokenizer(luaCode);
     Token[] tokens = tokenizer.flush();
