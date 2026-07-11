@@ -24,6 +24,7 @@ public class Assignment extends Statement {
             values[0].emitNewlines(builder);
             values[0].emitSingle(builder);
           } else builder.append("null");
+          builder.append(';');
         }
         case PropertyAccess propertyAccess -> {
           builder.append(CodeEmitter.runtimeParameterName);
