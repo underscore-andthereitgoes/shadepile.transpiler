@@ -23,8 +23,8 @@ public final class Bridge {
    * <p>
    * <br>
    * Accepted parameter types:<ul>
-   * <li>{@link Optional}: optional parameter (only filled if necessary to fit the parameter count, and takes precedence over {@code @}{@link Required})
-   * <li>{@code @}{@link Required}: nil becomes an error instead of null
+   * <li>{@link Optional}: optional parameter (only filled if necessary to fit the parameter count, and takes precedence over {@code @}{@link Nillable})
+   * <li>{@code @}{@link Nillable}: nil becomes null instead of an error
    * <li>{@code double}/{@link Double}: {@code number} (converted into a float)
    * <li>{@code long}/{@link Long}: {@code number} (converted into an integer)
    * <li>{@code boolean}/{@link Boolean}: {@code boolean}
@@ -65,12 +65,12 @@ public final class Bridge {
     Class<?>[] pClasses = function.getParameterTypes();
     int[] pOptionals = Arrays.stream(pClasses).mapToInt(cls -> cls == Optional.class ? 1 : 0).toArray();
     Annotation[][] pAnnotations = function.getParameterAnnotations();
-    int[] explicitlyNotNull = Arrays.stream(pAnnotations)
+    int[] pNonNull = Arrays.stream(pAnnotations)
         .mapToInt(annotations ->
             Arrays.stream(annotations)
                 .map(Annotation::annotationType)
-                .anyMatch(cls -> cls == Required.class)
-            ? 1 : 0
+                .anyMatch(cls -> cls == Nillable.class)
+            ? 0 : 1
         ).toArray();
 
     int pCountRequired = (int)Arrays.stream(pClasses).filter(cls -> cls != Optional.class).count();
@@ -104,7 +104,7 @@ public final class Bridge {
             arguments[i] = Arrays.copyOfRange(objects, j, pCount);
             break;
           } else {
-            arguments[i] = mapArgumentByExpectedType(function, i, objects[j++], pClasses[i], explicitlyNotNull[i] != 0);
+            arguments[i] = mapArgumentByExpectedType(function, i, objects[j++], pClasses[i], pNonNull[i] != 0);
           }
         } else {
           arguments[i] = Optional.empty();
@@ -122,14 +122,14 @@ public final class Bridge {
     };
   }
 
-  private static @Nullable Object mapArgumentByExpectedType(Method method, int argumentIndex0b, final @Nullable Object argument, Class<?> expectType, boolean explicitlyNotNull) {
+  private static @Nullable Object mapArgumentByExpectedType(Method method, int argumentIndex0b, final @Nullable Object argument, Class<?> expectType, boolean requireNonNull) {
     boolean wrapInOptional = false;
     if (expectType == Optional.class) {
       wrapInOptional = true;
       expectType = expectType.getTypeParameters()[0].getClass();
     }
     Object assignArgument = null;
-    boolean nillable = !expectType.isPrimitive() && !explicitlyNotNull;
+    boolean nillable = !expectType.isPrimitive() && !requireNonNull;
     if (argument == null && wrapInOptional) {
       assignArgument = Optional.empty();
     } else if (argument == null && nillable) {
@@ -275,5 +275,5 @@ public final class Bridge {
   @Documented
   @Retention(RetentionPolicy.RUNTIME)
   @Target(ElementType.PARAMETER)
-  public @interface Required {}
+  public @interface Nillable {}
 }
