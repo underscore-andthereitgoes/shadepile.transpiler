@@ -35,6 +35,11 @@ public abstract class Token {
     public Name(String text) {
       this.text = text;
     }
+
+    @Override
+    public String toString() {
+      return super.toString() + ":" + this.text;
+    }
   }
 
   public static class LabelBoundary extends Token {}
@@ -86,6 +91,11 @@ public abstract class Token {
     public final KeywordTokenType type;
     public Keyword(KeywordTokenType type) {
       this.type = type;
+    }
+
+    @Override
+    public String toString() {
+      return super.toString() + ":" + this.type.toString();
     }
   }
 }

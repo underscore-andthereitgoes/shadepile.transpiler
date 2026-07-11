@@ -29,7 +29,8 @@ public class Block extends PositionedNode {
   private boolean anyGoto = false;
   private final @Nullable Block parent;
   private final boolean inheritLabels;
-  private boolean canBreak;
+  private @Nullable Block breakBlock;
+  private boolean needBreakerLabel;
   private final Set<Block> labelChildren;
 
   public Block(@Nullable Block parent) {
@@ -49,14 +50,14 @@ public class Block extends PositionedNode {
     this.returned = false;
     this.parent = parent;
     this.inheritLabels = inheritLabels;
-    this.canBreak = parent != null && parent.canBreak;
+    this.breakBlock = parent != null ? parent.breakBlock : null;
+    this.needBreakerLabel = false;
     this.labelChildren = new HashSet<>();
   }
 
   @Contract("-> this")
-  public Block enableBreak() {
-    this.canBreak = true;
-    return this;
+  public Block breakable() {
+    return (this.breakBlock = this);
   }
 
   @Contract(pure = true)
@@ -96,9 +97,11 @@ public class Block extends PositionedNode {
         }
       }
       case Return _ -> this.returned = true;
-      case Break _ -> {
-        if (!this.canBreak) throw new LuaCompileError("can only break out of a loop, and can't call break after another break in the same block");
-        this.canBreak = false;
+      case Break brk -> {
+        if (this.breakBlock == null) throw new LuaCompileError("can only break out of a loop, and can't call break after another break in the same block");
+        this.breakBlock.needBreakerLabel = true;
+        brk.setBreakGroup(this.breakBlock.getBreakLabel());
+        this.breakBlock = null;
       }
       case Label label -> {
         if (this.containsLabel(label.name)) throw new LuaCompileError("label ::" + label.name + ":: has already been defined in this scope");
@@ -106,6 +109,18 @@ public class Block extends PositionedNode {
       }
       case Goto _ when !this.anyGoto -> this.propagateGoto();
       default -> {}
+    }
+  }
+
+  private String getBreakLabel() {
+    return "$$" + this.groupName + "$$";
+  }
+
+  /// it is necessary to implement `break` functionality from the surrounding node (`Block` doesn't add break labels)
+  public void appendBreakLabelIfRequired(NewlineCountingStringBuilder builder) {
+    if (this.needBreakerLabel) {
+      builder.append(this.getBreakLabel());
+      builder.append(':');
     }
   }
 
@@ -171,19 +186,21 @@ public class Block extends PositionedNode {
   }
 
   public void emitWithoutBrackets(NewlineCountingStringBuilder builder) {
-    String scopeVarName = "scope$" + this.groupName;
-    builder.append("Object[] ");
-    builder.append(scopeVarName);
-    builder.append("=new Object[");
-    builder.append(String.valueOf(this.locals.size()));
-    builder.append("];");
-    for (Map.Entry<String,Integer> entry: this.predefinedLocals.entrySet()) {
+    if (!this.locals.isEmpty()) {
+      String scopeVarName = "scope$" + this.groupName;
+      builder.append("Object[] ");
       builder.append(scopeVarName);
-      builder.append('[');
-      builder.append(String.valueOf((int)entry.getValue()));
-      builder.append("]=");
-      builder.append(this.predefinedLocalValueCode.get(entry.getKey()));
-      builder.append(';');
+      builder.append("=new Object[");
+      builder.append(String.valueOf(this.locals.size()));
+      builder.append("];");
+      for (Map.Entry<String,Integer> entry: this.predefinedLocals.entrySet()) {
+        builder.append(scopeVarName);
+        builder.append('[');
+        builder.append(String.valueOf((int)entry.getValue()));
+        builder.append("]=");
+        builder.append(this.predefinedLocalValueCode.get(entry.getKey()));
+        builder.append(';');
+      }
     }
     if (this.labels.isEmpty()) {
       emitStatements(builder);

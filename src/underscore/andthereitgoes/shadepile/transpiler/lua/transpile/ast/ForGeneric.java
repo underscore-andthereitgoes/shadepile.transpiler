@@ -16,7 +16,7 @@ public class ForGeneric extends For {
   public ForGeneric(String[] iteratorNames, Expression[] iteratorExpressions, Block parent) {
     this.iteratorNames = iteratorNames;
     this.iteratorExpressions = iteratorExpressions;
-    this.body = new Block(parent, true).enableBreak();
+    this.body = new Block(parent, true).breakable();
     this.predefineIterators();
   }
 
@@ -35,6 +35,7 @@ public class ForGeneric extends For {
 
   @Override
   public void emit(NewlineCountingStringBuilder builder) {
+    this.body.appendBreakLabelIfRequired(builder);
     builder.append("for(Object[] ");
     builder.append(javaIteratorName);
     builder.append(':');

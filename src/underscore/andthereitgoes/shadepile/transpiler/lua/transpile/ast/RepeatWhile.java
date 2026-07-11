@@ -12,7 +12,7 @@ public class RepeatWhile extends Statement implements HasChildBlock {
 
   public RepeatWhile(Expression condition, Block parent) {
     this.condition = condition;
-    this.body = new Block(parent, true).enableBreak();
+    this.body = new Block(parent, true).breakable();
   }
 
   @Override
@@ -22,6 +22,7 @@ public class RepeatWhile extends Statement implements HasChildBlock {
 
   @Override
   public void emit(NewlineCountingStringBuilder builder) {
+    this.body.appendBreakLabelIfRequired(builder);
     builder.append("if(true)while(");
     builder.append(CodeEmitter.runtimeParameterName);
     builder.append(".o.asbool(");

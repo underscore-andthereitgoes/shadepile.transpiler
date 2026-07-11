@@ -1,5 +1,6 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua.runtime;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -402,7 +403,9 @@ public class LuaRuntime {
       };
     }
 
+    @Contract(value = "_ -> param1", pure = true)
     public boolean asbool(boolean value) { return value; }
+    @Contract(value = "null -> false", pure = true)
     public boolean asbool(Object value) {
       value = LuaRuntime.this.u.single(value);
       if (value instanceof Boolean bool) return bool;

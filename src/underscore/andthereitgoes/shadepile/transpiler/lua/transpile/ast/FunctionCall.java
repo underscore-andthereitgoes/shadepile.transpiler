@@ -36,4 +36,9 @@ public class FunctionCall extends Expression implements StatementLike {
     }
     builder.append(')');
   }
+
+  @Override
+  public boolean requiresSingle() {
+    return true;
+  }
 }

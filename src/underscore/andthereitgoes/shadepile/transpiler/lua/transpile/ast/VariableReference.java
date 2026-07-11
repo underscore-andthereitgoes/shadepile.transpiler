@@ -6,6 +6,8 @@ import org.jetbrains.annotations.Nullable;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.LuaCompileError;
 import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.NewlineCountingStringBuilder;
 
+import java.util.Objects;
+
 
 public class VariableReference extends VariableOrPropertyAccess {
 
@@ -51,5 +53,10 @@ public class VariableReference extends VariableOrPropertyAccess {
       builder.append(String.valueOf(this.scopeIndex));
       builder.append("]");
     }
+  }
+
+  @Override
+  public boolean requiresSingle() {
+    return Objects.equals(this.localName, "...");
   }
 }

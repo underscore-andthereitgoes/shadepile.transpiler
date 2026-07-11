@@ -17,7 +17,7 @@ public class ForNumeric extends For {
     if (expressions == null || expressions.length != 2 && expressions.length != 3) throw new IllegalStateException("incorrect expressions for numeric for");
     this.iteratorName = iteratorName;
     this.expressions = expressions;
-    this.body = new Block(parent, true).enableBreak();
+    this.body = new Block(parent, true).breakable();
     this.predefineIterator();
   }
 
@@ -32,6 +32,7 @@ public class ForNumeric extends For {
 
   @Override
   public void emit(NewlineCountingStringBuilder builder) {
+    this.body.appendBreakLabelIfRequired(builder);
     builder.append("for(Object ");
     builder.append(javaIteratorName);
     builder.append(':');

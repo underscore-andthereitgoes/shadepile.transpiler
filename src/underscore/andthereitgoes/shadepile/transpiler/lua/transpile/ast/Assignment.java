@@ -20,22 +20,24 @@ public class Assignment extends Statement {
         case VariableReference localVariable -> {
           localVariable.emit(builder);
           builder.append('=');
-          builder.append(CodeEmitter.runtimeParameterName);
-          builder.append(".u.single(");
+          if (values.length > 0) {
+            values[0].emitNewlines(builder);
+            values[0].emitSingle(builder);
+          } else builder.append("null");
         }
         case PropertyAccess propertyAccess -> {
           builder.append(CodeEmitter.runtimeParameterName);
           builder.append(".p.set(");
           propertyAccess.emitRef(builder);
           builder.append(',');
+          if (values.length > 0) {
+            values[0].emitNewlines(builder);
+            values[0].emitSingle(builder);
+          } else builder.append("null");
+          builder.append(");");
         }
         default -> throw new IllegalStateException();
       }
-      if (values.length > 0) {
-        values[0].emitNewlines(builder);
-        values[0].emit(builder);
-      } else builder.append("null");
-      builder.append(");");
     } else {
 
       builder.append('{');

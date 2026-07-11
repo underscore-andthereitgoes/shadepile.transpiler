@@ -8,4 +8,11 @@ public class LuaParseError extends RuntimeException {
   public LuaParseError(String message) {
     super(message);
   }
+
+  @Override
+  public String getLocalizedMessage() {
+    String msg = super.getLocalizedMessage();
+    if (this.at != null) msg = msg + "\n        at " + this.at;
+    return msg;
+  }
 }

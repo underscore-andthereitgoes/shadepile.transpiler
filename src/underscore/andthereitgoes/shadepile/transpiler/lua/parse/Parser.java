@@ -136,6 +136,8 @@ public class Parser {
 
     block[0] = TokenFinder.zeroOrMore(() -> stmt[0].map((tokenFinder, statements) -> {
       if (statements.size() != 1) throw new IllegalStateException();
+//      System.out.println(tokenFinder + " +> statement " + statements.getFirst());
+//      System.out.println("            to block > " + tokenFinder.block);
       tokenFinder.block.pushStatement(statements.getFirst());
       return statements;
     }));
@@ -145,35 +147,58 @@ public class Parser {
         .consume();
 
     final TokenFinder<If.Section> if_section = TokenFinder.ordered(
-        () -> expr[0].map((tokenFinder, expressions) ->
-            List.of(new If.Section(tokenFinder.block = new Block(tokenFinder.block, true), expressions.getFirst()))
-        ).throwing("expected condition")
+        () -> expr[0].map((tokenFinder, expressions) -> {
+          var blk = new Block(tokenFinder.block, true);
+//          System.out.println("ifsection:");
+//          System.out.println("   " + tokenFinder.block);
+          tokenFinder.block = blk;
+//          System.out.println("   " + tokenFinder.block);
+          return List.of(new If.Section(blk, expressions.getFirst()));
+        }).throwing("expected condition")
             .withParentsTakeContext(),
         (TokenFinder<If.Section>)TokenFinder.keyword(KeywordTokenType.THEN).consume()
             .throwing("expected \"then\" after condition"),
         (TokenFinder<If.Section>)block[0].consume()
-    );
+    ).named("if_section");
 
     s_if[0] = TokenFinder.ordered(
         (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.IF),
+//        (TokenFinder<Object>)TokenFinder.emptyValid().map((tokenFinder, objects) -> {
+//          System.out.println("before if sections block = " + tokenFinder.block);
+//          return objects;
+//        }),
         (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ordered(
             if_section,
+//            (TokenFinder<If.Section>)TokenFinder.emptyValid().map((tokenFinder, objects) -> {
+//              System.out.println("after if section, block = " + tokenFinder.block);
+//              return objects;
+//            }),
             TokenFinder.zeroOrMore(() -> TokenFinder.ordered(
                 (TokenFinder<If.Section>)TokenFinder.keyword(KeywordTokenType.ELSEIF).consume(),
                 if_section
-            ))
-        ).group(),
+            ))//,
+//            (TokenFinder<If.Section>)TokenFinder.emptyValid().map((tokenFinder, objects) -> {
+//              System.out.println("after zero or more, block = " + tokenFinder.block);
+//              return objects;
+//            })
+        ).named("pre-grouped if sections").group().named("postgrouped_if_sections"),
+//        (TokenFinder<Object>)TokenFinder.emptyValid().map((tokenFinder, objects) -> {
+//          System.out.println("after all if sections, block = " + tokenFinder.block);
+//          return objects;
+//        }),
         (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.optional(TokenFinder.ordered(
             TokenFinder.keyword(KeywordTokenType.ELSE)
                 .map((tokenFinder, keywords) ->
                     List.of(tokenFinder.block = (Block)new Block(tokenFinder.block, true).at(keywords.getFirst()))
                 ).withParentsTakeContext(),
             (TokenFinder<Block>)block[0].consume()
-        ))
-    ).map((tokenFinder, objects) -> {
-      System.out.println(tokenFinder);
-      System.out.println(tokenFinder.block);
-      Thread.dumpStack();
+        ).named("nonoptional_else_section")),
+//        (TokenFinder<Object>)TokenFinder.emptyValid().map((tokenFinder, objects) -> {
+//          System.out.println("after all parts, block = " + tokenFinder.block);
+//          return objects;
+//        })
+        (TokenFinder<Object>)s_end[0].consume()
+    ).named("premap_if").map((tokenFinder, objects) -> {
       Token.Keyword keyword = (Token.Keyword)objects.getFirst();
       List<If.Section> ifSections = (List<If.Section>)objects.get(1);
       Block elseSection = null;
@@ -181,7 +206,7 @@ public class Parser {
         elseSection = (Block)objects.get(2);
       }
       return List.of((If)new If(ifSections, elseSection, tokenFinder.block).at(keyword));
-    });
+    }).named("postmap_if");
 
     s_do[0] = TokenFinder.ordered(
         TokenFinder.keyword(KeywordTokenType.DO).map((tokenFinder, keywords) -> {
@@ -196,7 +221,7 @@ public class Parser {
     s_while[0] = TokenFinder.ordered(
         TokenFinder.ordered(
             (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.WHILE),
-            () -> (TokenFinder<Object>)(TokenFinder<?>)expr[0].throwing("expected condition")
+            () -> (TokenFinder<Object>)(TokenFinder<?>)expr[0].throwing("expected condition").named("while expression")
         ).map((tokenFinder, keywords) -> {
           RepeatWhile s = (RepeatWhile)new RepeatWhile((Expression)keywords.getLast(), tokenFinder.block).at((Token)keywords.getFirst());
           tokenFinder.block = s.body;
@@ -210,7 +235,7 @@ public class Parser {
     s_repeat[0] = TokenFinder.ordered(
         (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.keyword(KeywordTokenType.REPEAT)
             .map((tokenFinder, keywords) ->
-                List.of(tokenFinder.block = new Block((Block)new Block(tokenFinder.block, true).enableBreak().at(keywords.getFirst())))
+                List.of(tokenFinder.block = new Block((Block)new Block(tokenFinder.block, true).breakable().at(keywords.getFirst())))
             ).withParentsTakeContext(),
         (TokenFinder<Object>)block[0].consume(),
         (TokenFinder<Object>)TokenFinder.keyword(KeywordTokenType.UNTIL).consume()
@@ -316,9 +341,9 @@ public class Parser {
     });
 
     unopexpr[0] = TokenFinder.ordered(
-        (TokenFinder<UnaryOperatorOrExpression>)(TokenFinder<?>)TokenFinder.zeroOrMore(unop[0]),
+        (TokenFinder<UnaryOperatorOrExpression>)(TokenFinder<?>)TokenFinder.zeroOrMore(unop[0]).named("unops"),
         () -> (TokenFinder<UnaryOperatorOrExpression>)(TokenFinder<?>)term[0]
-    );
+    ).named("unopexpr");
 
     opexpr[0] = TokenFinder.ordered(
         (TokenFinder<OperatorOrExpression>)(TokenFinder<?>)unopexpr[0],
@@ -326,7 +351,7 @@ public class Parser {
             (TokenFinder<OperatorOrExpression>)(TokenFinder<?>)binop[0],
             (TokenFinder<OperatorOrExpression>)(TokenFinder<?>)unopexpr[0]
                 .throwing("expected expression after operator")
-        ))
+        )).named("binop_unopexpr_s")
     ).map((tokenFinder, opExps) -> {
       final ArrayList<OperatorOrExpression> parts = new ArrayList<>(opExps);
 
@@ -421,8 +446,7 @@ public class Parser {
         name[0],
         TokenFinder.zeroOrMore(TokenFinder.ordered(
             (TokenFinder<String>)TokenFinder.ofClass(Token.Comma.class).consume(),
-            name[0]
-                .throwing("expected name after comma")
+            name[0].throwing("expected name after comma")
         ))
     );
 
@@ -438,7 +462,7 @@ public class Parser {
         (TokenFinder<String>)TokenFinder.optional(attr[0]),
         TokenFinder.zeroOrMore(TokenFinder.ordered(
             (TokenFinder<String>)TokenFinder.ofClass(Token.Comma.class).consume(),
-            name[0],
+            name[0].throwing("expected name after comma"),
             (TokenFinder<String>)TokenFinder.optional(attr[0])
         ))
     );
@@ -537,9 +561,9 @@ public class Parser {
 
     varlist[0] = TokenFinder.ordered(
         props[0],
-        TokenFinder.oneOrMore(TokenFinder.ordered(
+        TokenFinder.zeroOrMore(TokenFinder.ordered(
             (TokenFinder<VariableOrPropertyAccess>)TokenFinder.ofClass(Token.Comma.class).consume(),
-            props[0].throwing("expected variable after comma")
+            props[0].throwing("expected variable or property after comma")
         ))
     );
 
@@ -679,7 +703,7 @@ public class Parser {
               ));
             }),
             (TokenFinder<Assignment>)TokenFinder.invalid().throwing("expected variable names or \"function\" after \"local\"")
-        )
+        ).named("after_local")
     ).map((tokenFinder, objects) -> {
       Token.Keyword kw = (Token.Keyword)objects.getFirst();
       Assignment localAssignment = (Assignment)objects.getLast();
@@ -768,9 +792,18 @@ public class Parser {
     try {
       mainFinder.test(this);
 
-      if (this.peek() != null) throw new LuaParseError("unexpected token (expected statement)");
+//      System.out.println(this.pointer);
+//      System.out.println(Arrays.toString(this.input));
+
+      boolean ok = false;
+      if (this.peek() != null) {
+        this.take();
+        if (this.peek() == null) ok = true;
+      }
+      if (!ok) throw new LuaParseError("unexpected token (expected statement)");
     } catch (LuaParseError e) {
       if (e.at == null) e.at = this.peek();
+      throw e;
     }
 
     return mainBlock;

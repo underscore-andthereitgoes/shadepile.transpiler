@@ -4,8 +4,18 @@ import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.NewlineCount
 
 
 public class Break extends Statement {
+
+  private String breakGroup = null;
+
   @Override
   public void emit(NewlineCountingStringBuilder builder) {
-    builder.append("if(true)break;");
+    if (this.breakGroup == null) throw new IllegalStateException();
+    builder.append("if(true)break ");
+    builder.append(this.breakGroup);
+    builder.append(";");
+  }
+
+  public void setBreakGroup(String groupName) {
+    this.breakGroup = groupName;
   }
 }

@@ -13,9 +13,6 @@ public class GroupingExpression extends Expression {
 
   @Override
   public void emit(NewlineCountingStringBuilder builder) {
-    builder.append(CodeEmitter.runtimeParameterName);
-    builder.append(".u.single(");
-    expression.emit(builder);
-    builder.append(')');
+    expression.emitSingle(builder);
   }
 }

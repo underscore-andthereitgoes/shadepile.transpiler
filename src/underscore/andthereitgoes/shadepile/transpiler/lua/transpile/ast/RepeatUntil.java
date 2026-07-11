@@ -12,7 +12,7 @@ public class RepeatUntil extends Statement implements HasChildBlock {
 
   public RepeatUntil(Expression condition, Block body, boolean bodyDirect) {
     this.condition = condition;
-    this.body = bodyDirect ? body : new Block(body, true).enableBreak();
+    this.body = bodyDirect ? body : new Block(body, true).breakable();
   }
 
   public RepeatUntil(Expression condition, Block parent) {
@@ -26,6 +26,7 @@ public class RepeatUntil extends Statement implements HasChildBlock {
 
   @Override
   public void emit(NewlineCountingStringBuilder builder) {
+    this.body.appendBreakLabelIfRequired(builder);
     builder.append("if(true)while(true){");
     this.body.emitWithoutBrackets(builder);
     builder.append("if(");

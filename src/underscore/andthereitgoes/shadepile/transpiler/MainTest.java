@@ -11,6 +11,7 @@ import underscore.andthereitgoes.shadepile.transpiler.lua.transpile.ast.Block;
 public class MainTest {
 
   static void main(String[] args) {
+
     String inputCode = """
         
         print("hello, world!")
@@ -29,21 +30,39 @@ public class MainTest {
           y = y + 1
         end
         
+        while true do
+          if y == 10 then break end
+          y = y + 1
+        end
+        
+        repeat
+          local z = y + 2
+          y = z
+        until z > 24
+        
+        for i = 1, 10 do
+          for j = 1, 50, 2 do
+            print(i + j + 3 + 5 // 2)
+            print((i << j) & i | j) -- oh yeah also this
+          end
+        end
+        
+        local table = {["key"] = "value"}
+        
+        for k, v in pairs(table) do
+          print(k, v)
+        end
+        
         """;
 
     Tokenizer tokenizer = new Tokenizer(inputCode);
     Token[] tokens = tokenizer.flush();
-//    breakpoint(tokens);
     Parser parser = new Parser(tokens);
     Block out = parser.parse();
-    breakpoint(out);
     NewlineCountingStringBuilder code = new NewlineCountingStringBuilder();
     out.emit(code);
     String outCode = code.toString();
-    breakpoint(outCode);
     System.out.println(outCode);
   }
-
-  public static void breakpoint(Object... args) {}
 
 }
