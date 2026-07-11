@@ -28,10 +28,15 @@ public abstract class LuaEnvironment extends LuaTable {
   public abstract void print(Object[] args);
 
   public void addGlobals() {
+
     this.putFunction("print", objs -> {
       this.print(objs);
       return new Object[0];
     });
+
+    this.put("_VERSION", "Lua 5.5 - shadepile");
+    this.put("_G", this);
+    this.put("_ENV", this);
   }
 
   public LuaTable addMathModule() {
