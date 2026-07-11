@@ -1,8 +1,12 @@
 package underscore.andthereitgoes.shadepile.transpiler.lua.runtime;
 
 import org.jetbrains.annotations.NotNull;
+import underscore.andthereitgoes.shadepile.transpiler.lua.runtime.lib.StringLib;
 
+import java.nio.CharBuffer;
+import java.util.Arrays;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.random.RandomGenerator;
 
 
@@ -12,6 +16,10 @@ public abstract class LuaEnvironment extends LuaTable {
   private boolean usingRNG = false;
   private final @NotNull LuaRuntime runtime;
 
+  public LuaRuntime getRuntime() {
+    return runtime;
+  }
+
   public LuaEnvironment(LuaRuntime runtime) {
     this.runtime = runtime;
     rng = new xoshiro256ss();
@@ -20,7 +28,10 @@ public abstract class LuaEnvironment extends LuaTable {
   public abstract void print(Object[] args);
 
   public void addGlobals() {
-    //
+    this.putFunction("print", objs -> {
+      this.print(objs);
+      return new Object[0];
+    });
   }
 
   public LuaTable addMathModule() {
@@ -299,19 +310,18 @@ public abstract class LuaEnvironment extends LuaTable {
   public LuaTable addTableModule() {
     LuaTable table = new LuaTable();
 
-    table.putFunction("concat", (Object[] params) -> {
-      Object maybeList = params.length > 0 ? params[0] : null;
-      if (!(maybeList instanceof LuaTable)) throw new LuaRuntimeError("table.concat() expected a table for argument 1");
-    });
-    table.putFunction("create", (Object[] params) -> { // new
-    });
-    table.putFunction("insert", (Object[] params) -> {});
-    table.putFunction("move", (Object[] params) -> { // new
-    });
-    table.putFunction("pack", (Object[] params) -> new Object[]{LuaTable.ofListN(params)});
-    table.putFunction("remove", (Object[] params) -> {});
-    table.putFunction("sort", (Object[] params) -> {});
-    table.putFunction("unpack", (Object[] params) -> {});
+//    table.putFunction("concat", (Object[] params) -> {
+//      Object maybeList = params.length > 0 ? params[0] : null;
+//      if (!(maybeList instanceof LuaTable)) throw new LuaRuntimeError("table.concat() expected a table for argument 1");
+//    });
+//    table.putFunction("create", (Object[] params) -> new Object[]{new LuaTable()});
+//    table.putFunction("insert", (Object[] params) -> {});
+//    table.putFunction("move", (Object[] params) -> { // new
+//    });
+//    table.putFunction("pack", (Object[] params) -> new Object[]{LuaTable.ofListN(params)});
+//    table.putFunction("remove", (Object[] params) -> {});
+//    table.putFunction("sort", (Object[] params) -> {});
+//    table.putFunction("unpack", (Object[] params) -> {});
 
     this.put("table", table);
     return table;
@@ -319,7 +329,30 @@ public abstract class LuaEnvironment extends LuaTable {
 
   public LuaTable addStringModule(boolean applyMetatable) {
     LuaTable string = new LuaTable();
+    try {
 
+      string.putFunction("byte", Bridge.methodToLua(StringLib.class.getDeclaredMethod("byte_", String.class, Optional.class, Optional.class)));
+      string.putFunction("char", objects -> new Object[]{
+          new String(
+              Arrays.stream(objects)
+                  .mapToInt(obj -> switch (obj) {
+                    case Double d when Double.isFinite(d) && Math.floor(d) == d -> (int)(long)(double)d;
+                    case Long l -> (int)(long)l;
+                    default -> throw new LuaRuntimeError("string.char() expects integers only");
+                  }).toArray()
+          , 0, objects.length)
+      });
+      string.putFunction("dump", _ -> {throw new LuaRuntimeError("string.dump() is not supported on this runtime");});
+      string.putFunction("len", Bridge.methodToLua(StringLib.class.getDeclaredMethod("len", String.class)));
+      string.putFunction("lower", Bridge.methodToLua(StringLib.class.getDeclaredMethod("lower", String.class)));
+      string.putFunction("rep", Bridge.methodToLua(StringLib.class.getDeclaredMethod("rep", String.class, int.class, Optional.class)));
+      string.putFunction("reverse", Bridge.methodToLua(StringLib.class.getDeclaredMethod("reverse", String.class)));
+      string.putFunction("sub", Bridge.methodToLua(StringLib.class.getDeclaredMethod("sub", String.class, int.class, Optional.class)));
+      string.putFunction("upper", Bridge.methodToLua(StringLib.class.getDeclaredMethod("upper", String.class)));
+
+    } catch (NoSuchMethodException e) {
+      throw new RuntimeException(e);
+    }
     this.put("string", string);
     if (applyMetatable) {
       this.runtime.p.primitiveMetatableString.put("__index", string.copy().readonly());

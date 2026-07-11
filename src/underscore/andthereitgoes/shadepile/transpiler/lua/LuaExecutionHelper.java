@@ -27,7 +27,7 @@ public final class LuaExecutionHelper {
     ocb.ready();
     CompiledLuaClassFile classFile = ocb.compile();
     CompiledLuaLoader loader = new CompiledLuaLoader(classFile.toByteArray());
-    return loader.run(new LuaRuntime(), environment);
+    return loader.run(environment.getRuntime(), environment);
   }
 
   @SuppressWarnings("DuplicateThrows")
@@ -49,7 +49,7 @@ public final class LuaExecutionHelper {
     ocb.ready();
     CompiledLuaClassFile classFile = ocb.compile();
     CompiledLuaLoader loader = new CompiledLuaLoader(classFile.toByteArray());
-    return loader.run(new LuaRuntime(), environment);
+    return loader.run(environment.getRuntime(), environment);
   }
 
 }

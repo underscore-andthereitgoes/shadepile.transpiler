@@ -33,9 +33,9 @@ public class CompiledLuaLoader extends ClassLoader {
     }
     try {
       return method.invoke(null, runtime, environment);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException | InvocationTargetException e) {
       throw new RuntimeException("Error in Lua code.", e);
-    } catch (InvocationTargetException | IllegalAccessException e) {
+    } catch (IllegalAccessException e) {
       throw new RuntimeException("Error while invoking Lua code (unrelated to Lua).", e);
     }
   }

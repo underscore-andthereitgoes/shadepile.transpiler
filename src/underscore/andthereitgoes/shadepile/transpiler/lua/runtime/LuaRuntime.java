@@ -180,18 +180,21 @@ public class LuaRuntime {
           for (Object single: multires) {
             long key = listIterator++;
             LuaPropertyReference ref = LuaRuntime.this.p.ref(table, key);
-            Objects.requireNonNull(ref.target).put(key, single);
+            Objects.requireNonNull(ref.target);
+            table.put(key, single);
           }
         } else {
           Object value = single(oValue);
           if (oKey == noKey) {
             long key = listIterator++;
             LuaPropertyReference ref = LuaRuntime.this.p.ref(table, key);
-            Objects.requireNonNull(ref.target).put(key, value);
+            Objects.requireNonNull(ref.target);
+            table.put(key, value);
           } else {
             Object key = single(oKey);
             LuaPropertyReference ref = LuaRuntime.this.p.ref(table, key);
-            Objects.requireNonNull(ref.target).put(key, value);
+            Objects.requireNonNull(ref.target);
+            table.put(key, value);
           }
         }
       }
@@ -206,7 +209,7 @@ public class LuaRuntime {
       return f;
     }
 
-    public Function<Object[],Object[]> fbind(Object self, Object target, Object... parameters) {
+    public Function<Object[],Object[]> fbind(Object self, Object target, Object[] parameters) {
       Object oTarget = target;
       if (target instanceof LuaTableOrUserdata) target = LuaRuntime.this.o.tofunc(target);
       if (target instanceof Function<?,?> func) {
@@ -219,7 +222,15 @@ public class LuaRuntime {
           l.addAll(Arrays.asList(parameters));
           plist = LuaRuntime.this.u.multires(l.toArray());
         }
-        return f.compose((Object _) -> LuaRuntime.this.u.multires(plist));
+        return f.compose(objects -> {
+          if (objects.length == 0) return plist;
+          else {
+            Object[] params = new Object[plist.length + objects.length];
+            System.arraycopy(plist, 0, params, 0, plist.length);
+            System.arraycopy(objects, 0, params, plist.length, objects.length);
+            return params;
+          }
+        });
       } else {
         throw new LuaRuntimeError(LuaRuntime.this.o.type(oTarget) + " is not callable");
       }
@@ -272,7 +283,9 @@ public class LuaRuntime {
           }
           @Override
           public double nextDouble() {
-            return i += step;
+            double j = i;
+            i += step;
+            return j;
           }
         };
       } else {
@@ -284,7 +297,9 @@ public class LuaRuntime {
           }
           @Override
           public double nextDouble() {
-            return i += step;
+            double j = i;
+            i += step;
+            return j;
           }
         };
       }
@@ -300,7 +315,9 @@ public class LuaRuntime {
           }
           @Override
           public long nextLong() {
-            return i += step;
+            long j = i;
+            i += step;
+            return j;
           }
         };
       } else {
@@ -312,7 +329,9 @@ public class LuaRuntime {
           }
           @Override
           public long nextLong() {
-            return i += step;
+            long j = i;
+            i += step;
+            return j;
           }
         };
       }
@@ -1073,16 +1092,12 @@ public class LuaRuntime {
     }
     public LuaPropertyReference ref(Object target, Object property) {
       target = LuaRuntime.this.u.single(target);
-      if (target instanceof LuaTableOrUserdata table) {
-        property = LuaRuntime.this.u.single(property);
-        if (property == null || property.equals(Double.NaN)) throw new LuaRuntimeError("cannot use " + (property == null ? "nil" : "nan") + " as a key");
-        if (property instanceof Double d) {
-          if (Double.isFinite(d) && d == Math.floor(d)) property = d.longValue();
-        }
-        return new LuaPropertyReference(table, property);
-      } else {
-        throw new LuaRuntimeError("cannot get or set properties of " + LuaRuntime.this.o.type(target));
+      property = LuaRuntime.this.u.single(property);
+      if (property == null || property.equals(Double.NaN)) throw new LuaRuntimeError("cannot use " + (property == null ? "nil" : "nan") + " as a key");
+      if (property instanceof Double d) {
+        if (Double.isFinite(d) && d == Math.floor(d)) property = d.longValue();
       }
+      return new LuaPropertyReference(target, property);
     }
     public LuaPropertyReference refBind(Object target, Object property) {
       LuaPropertyReference r = ref(target, property);
@@ -1099,20 +1114,23 @@ public class LuaRuntime {
     }
     public void setRaw(LuaPropertyReference ref, Object value) {
       value = LuaRuntime.this.u.single(value);
-      LuaTableOrUserdata target = ref.target;
+      Object target = ref.target;
       if (ref.isNowhere || target == null) return;
       if (target instanceof LuaTable luaTable && luaTable.isReadOnlyForLua) return;
-      if (value == null) {
-        target.remove(ref.property);
-      } else {
-        target.put(ref.property, value);
-      }
+      if (target instanceof LuaTableOrUserdata tableOrUserdata) {
+        if (value == null) {
+          tableOrUserdata.remove(ref.property);
+        } else {
+          tableOrUserdata.put(ref.property, value);
+        }
+      } else throw new LuaRuntimeError("cannot set properties of " + LuaRuntime.this.o.type(target));
     }
     private void setRecurse(LuaPropertyReference reference, Object value) {
       setRecurse(reference, reference.target, value, 0);
     }
-    private void setRecurse(LuaPropertyReference originalReference, LuaTableOrUserdata currentTarget, Object value, int depth) {
-      if (originalReference.isNowhere || currentTarget == null) return;
+    private void setRecurse(LuaPropertyReference originalReference, Object currentTarget, Object value, int depth) {
+      if (originalReference.isNowhere) return;
+      if (currentTarget == null) throw new LuaRuntimeError("cannot set properties of nil");
       if (depth > 100) throw new LuaRuntimeError("maximum __newindex chain size exceeded (100)");
 
       var newindex = getMetafield(currentTarget, "__newindex");
@@ -1130,13 +1148,7 @@ public class LuaRuntime {
         }
       }
 
-      if (currentTarget instanceof LuaTable luaTable && luaTable.isReadOnlyForLua) return;
-
-      if (value == null) {
-        currentTarget.remove(originalReference.property);
-      } else {
-        currentTarget.put(originalReference.property, value);
-      }
+      setRaw(new LuaPropertyReference(currentTarget, originalReference.property), value);
     }
 
     public @Nullable Object get(LuaPropertyReference reference) {
@@ -1144,16 +1156,19 @@ public class LuaRuntime {
     }
     public @Nullable Object getRaw(LuaPropertyReference reference) {
       if (reference.isNowhere || reference.target == null) return null;
-      return reference.target.get(reference.property);
+      if (reference.target instanceof LuaTableOrUserdata tableOrUserdata) {
+        return tableOrUserdata.get(reference.property);
+      } else throw new LuaRuntimeError("cannot get properties of " + LuaRuntime.this.o.type(reference.target));
     }
     private @Nullable Object getRecurse(LuaPropertyReference reference) {
       return getRecurse(reference, reference.target, 0);
     }
-    private @Nullable Object getRecurse(LuaPropertyReference originalReference, LuaTableOrUserdata currentTarget, int depth) {
-      if (originalReference.isNowhere || currentTarget == null) return null;
+    private @Nullable Object getRecurse(LuaPropertyReference originalReference, Object currentTarget, int depth) {
+      if (originalReference.isNowhere) return null;
+      if (currentTarget == null) throw new LuaRuntimeError("cannot get properties of nil");
       if (depth > 100) throw new LuaRuntimeError("maximum __index chain size exceeded (100)");
 
-      Object value = currentTarget.get(originalReference.property);
+      Object value = currentTarget instanceof LuaTableOrUserdata table ? table.get(originalReference.property) : null;
 
       if (value == null) {
         var indexer = getMetafield(currentTarget, "__index");
@@ -1171,7 +1186,7 @@ public class LuaRuntime {
 
       if (originalReference.selfBinding) {
         // automatically throws error if not callable
-        value = LuaRuntime.this.f.fbind(originalReference.target, value);
+        value = LuaRuntime.this.f.fbind(originalReference.target, value, new Object[0]);
       }
 
       return value;

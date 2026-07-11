@@ -22,13 +22,15 @@ public class FunctionCall extends Expression implements StatementLike {
     builder.append(".f.fcall(");
     if (this.method != null) {
       builder.append(CodeEmitter.runtimeParameterName);
+      builder.append(".p.get(");
+      builder.append(CodeEmitter.runtimeParameterName);
       builder.append(".p.refBind(");
       this.target.emit(builder);
       builder.append(",\"");
       builder.append(StringEscapeUtils.escapeJava(this.method));
-      builder.append("\")");
+      builder.append("\"))");
     } else {
-      this.target.emit(builder);
+      this.target.emitSingle(builder);
     }
     for (Expression argument: this.arguments) {
       builder.append(',');

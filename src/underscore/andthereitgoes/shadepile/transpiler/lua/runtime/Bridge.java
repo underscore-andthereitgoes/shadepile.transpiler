@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.annotation.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,7 @@ public final class Bridge {
    * <li>Any type that can have {@link List} assigned: {@code table} or {@code userdata}
    * <li>Any type that can have {@link Map} assigned: {@code table}
    * <li>Exactly {@link Object}: any type
+   * <li>Exactly {@link Object}{@code []}: rest arguments (last parameter only)
    * <li>Any type that implements {@link LuaTableOrUserdata}: specific userdata
    * <br><em>If the type has a public static {@link String} field named {@code LUA_TYPE}, this will be used in the error instead of the class's simple name.</em>
    * </ul>
@@ -51,10 +53,12 @@ public final class Bridge {
    * <li>{@link List}: {@code table} (collected into a {@link LuaTable})
    * <li>{@link LuaTableOrUserdata} (except {@link LuaTable}): left as-is
    * <li>{@link Map} (except {@link LuaTableOrUserdata}, but including {@link LuaTable}): {@code table}
-   * <li>{@link Object}{@code []}: multires (conversion applied to each argument)
+   * <li>{@link Object}{@code []}, {@code int[]}, {@code long[]}, {@code double[]}: multires (conversion applied to each argument)
    * </ul>
    */
   public static @NotNull Function<Object[],Object[]> methodToLua(@NotNull Method function) {
+
+    if (!Modifier.isStatic(function.getModifiers())) throw new IllegalArgumentException("methodToLua can only be applied to static methods");
 
     int pCount = function.getParameterCount();
 
@@ -69,7 +73,7 @@ public final class Bridge {
             ? 1 : 0
         ).toArray();
 
-    int pCountRequired = (int)Arrays.stream(pClasses).filter(cls -> cls == Optional.class).count();
+    int pCountRequired = (int)Arrays.stream(pClasses).filter(cls -> cls != Optional.class).count();
 
     Class<?> rType = function.getReturnType();
     Function<Object, Object[]> returnMapper = (rType == Void.class) ? (r -> new Object[0]) : (Bridge::autoconvertReturn);
@@ -80,8 +84,8 @@ public final class Bridge {
       final int numProvided = objects.length;
       int available = numProvided;
       for (int i = 0; i < pCount; i++) {
-        if (available <= 0) throw new LuaRuntimeError("not enough arguments (need at least " + pCountRequired + ", got " + numProvided + ")");
         if (pOptionals[i] == 0) {
+          if (available <= 0) throw new LuaRuntimeError("not enough arguments (need at least " + pCountRequired + ", got " + numProvided + ")");
           provideWhich[i] = true;
           available--;
         }
@@ -95,7 +99,13 @@ public final class Bridge {
       int j = 0;
       for (int i = 0; i < pCount; i++) {
         if (provideWhich[i]) {
-          arguments[i] = mapArgumentByExpectedType(function, i, objects[j++], pClasses[i], explicitlyNotNull[i] != 0);
+          if (pClasses[i] == Object[].class) {
+            if (i != pCount - 1) throw new IllegalArgumentException("(Java issue) cannot have rest parameter before last argument in Lua-ported function");
+            arguments[i] = Arrays.copyOfRange(objects, j, pCount);
+            break;
+          } else {
+            arguments[i] = mapArgumentByExpectedType(function, i, objects[j++], pClasses[i], explicitlyNotNull[i] != 0);
+          }
         } else {
           arguments[i] = Optional.empty();
         }
@@ -217,11 +227,11 @@ public final class Bridge {
     return any instanceof Object[] multi ? (multi.length > 0 ? multi[0] : null) : any;
   }
 
-  private static double autoconvert(double value) { return value; }
-  private static double autoconvert(float value) { return value; }
-  private static long autoconvert(long value) { return value; }
-  private static long autoconvert(int value) { return value; }
   private static long autoconvert(short value) { return value; }
+  private static long autoconvert(int value) { return value; }
+  private static long autoconvert(long value) { return value; }
+  private static double autoconvert(float value) { return value; }
+  private static double autoconvert(double value) { return value; }
   private static boolean autoconvert(boolean value) { return value; }
   private static double autoconvert(@NotNull Double value) { return value; }
   private static double autoconvert(@NotNull Float value) { return value; }
@@ -239,6 +249,9 @@ public final class Bridge {
       case Short s -> autoconvert(s);
       case Boolean b -> autoconvert(b);
       case String s -> autoconvert(s);
+      case int[] array -> Arrays.stream(array).mapToLong(Bridge::autoconvert).toArray();
+      case long[] array -> array;
+      case double[] array -> array;
       case Object[] array -> Arrays.stream(array).map(Bridge::autoconvert).toArray(Object[]::new);
       case Function<?,?> f -> f;
       case List<?> list -> LuaTable.ofList(list.stream().map(Bridge::autoconvert).map(Bridge::single).toArray());

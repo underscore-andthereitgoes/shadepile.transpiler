@@ -6,11 +6,11 @@ import org.jetbrains.annotations.Nullable;
 
 public class LuaPropertyReference {
   public static final @NotNull Object theNowherePropertyValue = NoSuchFieldError.class;
-  public final @Nullable LuaTableOrUserdata target;
+  public final @Nullable Object target;
   public final @NotNull Object property;
   public final boolean isNowhere;
   public boolean selfBinding;
-  public LuaPropertyReference(@Nullable LuaTableOrUserdata target, @Nullable Object property) {
+  public LuaPropertyReference(@Nullable Object target, @Nullable Object property) {
     this.target = target;
     this.property = property == null ? theNowherePropertyValue : property;
     this.isNowhere = target == null || property == null;
