@@ -289,8 +289,29 @@ public abstract class LuaEnvironment extends LuaTable {
     return bit32;
   }
 
+  public LuaTable addUTF8Module() {
+    LuaTable utf8 = new LuaTable();
+
+    this.put("utf8", utf8);
+    return utf8;
+  }
+
   public LuaTable addTableModule() {
     LuaTable table = new LuaTable();
+
+    table.putFunction("concat", (Object[] params) -> {
+      Object maybeList = params.length > 0 ? params[0] : null;
+      if (!(maybeList instanceof LuaTable)) throw new LuaRuntimeError("table.concat() expected a table for argument 1");
+    });
+    table.putFunction("create", (Object[] params) -> { // new
+    });
+    table.putFunction("insert", (Object[] params) -> {});
+    table.putFunction("move", (Object[] params) -> { // new
+    });
+    table.putFunction("pack", (Object[] params) -> new Object[]{LuaTable.ofListN(params)});
+    table.putFunction("remove", (Object[] params) -> {});
+    table.putFunction("sort", (Object[] params) -> {});
+    table.putFunction("unpack", (Object[] params) -> {});
 
     this.put("table", table);
     return table;

@@ -15,6 +15,10 @@ public class LuaTable implements LuaTableOrUserdata {
   private @Nullable Object @NotNull [] list;
   private final @NotNull Hashtable<Object, Object> table;
 
+  public List<Object> listValues() {
+    return Arrays.asList(list);
+  }
+
   private boolean isReadOnly;
   public boolean isReadOnlyForLua;
 
