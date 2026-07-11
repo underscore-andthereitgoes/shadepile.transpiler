@@ -29,6 +29,7 @@ public enum OperatorTokenType {
   SLASH("/", null, BinaryOperator.DIV),
   DOUBLE_SLASH("//", null, BinaryOperator.IDIV),
   PERCENT("%", null, BinaryOperator.MOD),
+  CARET("^", null, BinaryOperator.POW),
   ;
 
   public final String text;

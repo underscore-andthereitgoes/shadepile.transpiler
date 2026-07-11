@@ -79,6 +79,7 @@ public class Parser {
     return pointer < input.length ? input[pointer] : null;
   }
 
+  @SuppressWarnings("UnusedReturnValue")
   public @Nullable Token take() {
     int p = pointer;
     pointer = Math.min(pointer + 1, input.length);
@@ -524,7 +525,7 @@ public class Parser {
         TokenFinder.firstValid(
             TokenFinder.ordered(
                 (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.LEFT),
-                (TokenFinder<Object>)(TokenFinder<?>)exprlist[0].throwing("expected parameter list after opening parenthesis"),
+                (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.optional(exprlist[0]),
                 (TokenFinder<Object>)TokenFinder.ofClassAndAlso(Token.Parenthesis.class, parenthesis -> parenthesis.side == Token.BracketSide.RIGHT).consume().throwing("expected a closing parenthesis")
             ),
             (TokenFinder<Object>)(TokenFinder<?>)TokenFinder.ofClass(Token.StringLiteral.class).map((tokenFinder, stringLiterals) -> List.of((Literal.StringLiteral)new Literal.StringLiteral(stringLiterals.getFirst().value).at(stringLiterals.getFirst()))),

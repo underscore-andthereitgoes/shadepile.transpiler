@@ -12,7 +12,7 @@ public class LuaParseError extends RuntimeException {
   @Override
   public String getLocalizedMessage() {
     String msg = super.getLocalizedMessage();
-    if (this.at != null) msg = msg + "\n        at " + this.at;
+    if (this.at != null) msg = msg + "\n        at " + this.at + "\n        (lua:" + this.at.line + ")";
     return msg;
   }
 }

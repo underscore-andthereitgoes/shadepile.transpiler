@@ -166,7 +166,7 @@ public class LuaRuntime {
       return LuaRuntime.tonumber_raw(e, base);
     }
 
-    public LuaTable table(@Nullable Object @NotNull [] flatEntries) {
+    public LuaTable table(@Nullable Object... flatEntries) {
       LuaTable table = new LuaTable();
       int listIterator = 1;
       int lastEntry = flatEntries.length - 2;
@@ -228,17 +228,17 @@ public class LuaRuntime {
       return ret;
     }
 
-    public Object[] fcall(Object self, Object target, Object... parameters) {
-      return LuaRuntime.this.f.callbound(LuaRuntime.this.f.fbind(self, target, parameters));
+    public Object[] fcall(Object target, Object... parameters) {
+      return LuaRuntime.this.f.callbound(LuaRuntime.this.f.fbind(null, target, parameters));
     }
 
-    public Iterator<Object[]> iterator(Object initRaw) {
+    public Iterable<Object[]> iterator(Object initRaw) {
       final Object[] init = initRaw instanceof Object[] ? (Object[])initRaw : new Object[]{initRaw};
       final Object iterFunc = init.length > 0 ? init[0] : null;
       if (init.length > 3) {
         throw new UnsupportedOperationException("to-be-closed variables (fourth item in generic for initialiser) are currently not supported. sorry :(");
       }
-      return new Iterator<>() {
+      return () -> new Iterator<>() {
         private final Object state = init.length > 1 ? init[1] : null;
         private Object control = init.length > 2 ? init[2] : null;
 //        private Object closable = init.length > 3 ? init[3] : null;
@@ -258,10 +258,10 @@ public class LuaRuntime {
       };
     }
 
-    public PrimitiveIterator.OfDouble numericIterator(double start, double stop, double step) {
+    public Iterable<Double> numericIterator(double start, double stop, double step) {
       if (step == 0.0d) throw new LuaRuntimeError("numeric for step cannot be zero");
       if (step < 0.0d) {
-        return new PrimitiveIterator.OfDouble() {
+        return () -> new PrimitiveIterator.OfDouble() {
           private double i = start; // value to be yielded next
           @Override
           public boolean hasNext() {
@@ -273,7 +273,7 @@ public class LuaRuntime {
           }
         };
       } else {
-        return new PrimitiveIterator.OfDouble() {
+        return () -> new PrimitiveIterator.OfDouble() {
           private double i = start;
           @Override
           public boolean hasNext() {
@@ -286,10 +286,10 @@ public class LuaRuntime {
         };
       }
     }
-    public PrimitiveIterator.OfLong numericIterator(long start, long stop, long step) {
+    public Iterable<Long> numericIterator(long start, long stop, long step) {
       if (step == 0L) throw new LuaRuntimeError("numeric for step cannot be zero");
       if (step < 0L) {
-        return new PrimitiveIterator.OfLong() {
+        return () -> new PrimitiveIterator.OfLong() {
           private long i = start; // value to be yielded next
           @Override
           public boolean hasNext() {
@@ -301,7 +301,7 @@ public class LuaRuntime {
           }
         };
       } else {
-        return new PrimitiveIterator.OfLong() {
+        return () -> new PrimitiveIterator.OfLong() {
           private long i = start;
           @Override
           public boolean hasNext() {
@@ -314,43 +314,43 @@ public class LuaRuntime {
         };
       }
     }
-    public PrimitiveIterator.OfDouble numericIterator(double start, double stop) { return numericIterator(start, stop, 1d); }
-    public PrimitiveIterator.OfDouble numericIterator(double start, long stop) { return numericIterator(start, (double)stop, 1d); }
-    public PrimitiveIterator.OfDouble numericIterator(long start, double stop) { return numericIterator((double)start, stop, 1d); }
-    public PrimitiveIterator.OfLong numericIterator(long start, long stop) { return numericIterator(start, stop, 1L); }
-    public PrimitiveIterator.OfDouble numericIterator(double start, double stop, long step) { return numericIterator(start, stop, (double)step); }
-    public PrimitiveIterator.OfDouble numericIterator(double start, long stop, double step) { return numericIterator(start, (double)stop, step); }
-    public PrimitiveIterator.OfDouble numericIterator(long start, double stop, double step) { return numericIterator((double)start, stop, step); }
-    public PrimitiveIterator.OfDouble numericIterator(double start, long stop, long step) { return numericIterator(start, (double)stop, (double)step); }
-    public PrimitiveIterator.OfDouble numericIterator(long start, double stop, long step) { return numericIterator((double)start, stop, (double)step); }
-    public PrimitiveIterator.OfDouble numericIterator(long start, long stop, double step) { return numericIterator((double)start, (double)stop, step); }
-    public Iterator<?> numericIterator(long start, Object stop) {
+    public Iterable<Double> numericIterator(double start, double stop) { return numericIterator(start, stop, 1d); }
+    public Iterable<Double> numericIterator(double start, long stop) { return numericIterator(start, (double)stop, 1d); }
+    public Iterable<Double> numericIterator(long start, double stop) { return numericIterator((double)start, stop, 1d); }
+    public Iterable<Long> numericIterator(long start, long stop) { return numericIterator(start, stop, 1L); }
+    public Iterable<Double> numericIterator(double start, double stop, long step) { return numericIterator(start, stop, (double)step); }
+    public Iterable<Double> numericIterator(double start, long stop, double step) { return numericIterator(start, (double)stop, step); }
+    public Iterable<Double> numericIterator(long start, double stop, double step) { return numericIterator((double)start, stop, step); }
+    public Iterable<Double> numericIterator(double start, long stop, long step) { return numericIterator(start, (double)stop, (double)step); }
+    public Iterable<Double> numericIterator(long start, double stop, long step) { return numericIterator((double)start, stop, (double)step); }
+    public Iterable<Double> numericIterator(long start, long stop, double step) { return numericIterator((double)start, (double)stop, step); }
+    public Iterable<?> numericIterator(long start, Object stop) {
       if (stop instanceof Number n)
         if (stop instanceof Long l) return numericIterator(start, l.longValue(), 1L);
         else return numericIterator((double)start, n.doubleValue(), 1d);
       throw new LuaRuntimeError("expected numbers in for loop, not " + LuaRuntime.this.o.type(stop));
     }
-    public PrimitiveIterator.OfDouble numericIterator(double start, Object stop) {
+    public Iterable<Double> numericIterator(double start, Object stop) {
       if (stop instanceof Number n) return numericIterator(start, n.doubleValue(), 1d);
       throw new LuaRuntimeError("expected numbers in for loop, not " + LuaRuntime.this.o.type(stop));
     }
-    public Iterator<?> numericIterator(Object start, long stop) {
+    public Iterable<?> numericIterator(Object start, long stop) {
       if (start instanceof Number n)
         if (start instanceof Long l) return numericIterator(l.longValue(), stop, 1L);
         else return numericIterator(n.doubleValue(), (double)stop, 1d);
       throw new LuaRuntimeError("expected numbers in for loop, not " + LuaRuntime.this.o.type(start));
     }
-    public PrimitiveIterator.OfDouble numericIterator(Object start, double stop) {
+    public Iterable<Double> numericIterator(Object start, double stop) {
       if (start instanceof Number n) return numericIterator(n.doubleValue(), stop, 1d);
       throw new LuaRuntimeError("expected numbers in for loop, not " + LuaRuntime.this.o.type(start));
     }
-    public Iterator<?> numericIterator(Object start, Object stop) {
+    public Iterable<?> numericIterator(Object start, Object stop) {
       if (start instanceof Number n1 && stop instanceof Number n2)
         if (start instanceof Long l1 && stop instanceof Long l2) return numericIterator(l1.longValue(), l2.longValue(), 1L);
         else return numericIterator(n1.doubleValue(), n2.doubleValue(), 1d);
       throw new LuaRuntimeError("expected numbers in for loop, not " + LuaRuntime.this.o.type(start) + ", " + LuaRuntime.this.o.type(stop));
     }
-    public Iterator<?> numericIterator(Object start, Object stop, Object step) {
+    public Iterable<?> numericIterator(Object start, Object stop, Object step) {
       if (start instanceof Number n1 && stop instanceof Number n2 && step instanceof Number n3)
         if (start instanceof Long l1 && stop instanceof Long l2 && step instanceof Long l3) return numericIterator(l1.longValue(), l2.longValue(), l3.longValue());
         else return numericIterator(n1.doubleValue(), n2.doubleValue(), n3.doubleValue());
