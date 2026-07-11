@@ -17,12 +17,17 @@ public class UnaryOperation extends Operation {
 
   @Override
   public void emit(NewlineCountingStringBuilder builder) {
-    builder.append(CodeEmitter.runtimeParameterName);
-    builder.append(".o.");
-    builder.append(this.operator.name);
-    builder.append('(');
-    this.operand.emitNewlines(builder);
-    this.operand.emit(builder);
-    builder.append(')');
+    if (this.operator == UnaryOperator.UNM && (this.operand instanceof Literal.FloatLiteral || this.operand instanceof Literal.IntegerLiteral)) {
+      builder.append('-');
+      this.operand.emit(builder);
+    } else {
+      builder.append(CodeEmitter.runtimeParameterName);
+      builder.append(".o.");
+      builder.append(this.operator.name);
+      builder.append('(');
+      this.operand.emitNewlines(builder);
+      this.operand.emit(builder);
+      builder.append(')');
+    }
   }
 }
