@@ -154,6 +154,20 @@ public class LuaTable implements LuaTableOrUserdata {
         }
       }
       this.list[idx] = value;
+
+      idx++; // convert back to Lua key
+      // scan for list extension
+      List<Object> extension = new ArrayList<>();
+      while (this.table.containsKey(++idx)) {
+        extension.add(this.table.remove(idx));
+      }
+      if (!extension.isEmpty()) {
+        Object[] list0 = this.list;
+        this.list = new Object[this.list.length + extension.size()];
+        System.arraycopy(list0, 0, this.list, 0, list0.length);
+        System.arraycopy(extension.toArray(), 0, this.list, list0.length, extension.size());
+      }
+
       return v0;
     }
     return this.table.put(key, value);
@@ -176,7 +190,7 @@ public class LuaTable implements LuaTableOrUserdata {
         // key (new last index) is now a number from -1 to (this.list.length - 2)
         this.list = Arrays.copyOf(this.list, k);
       } else {
-        // leave gap
+        // just leave gap
         this.list[k] = null;
       }
       return v0;

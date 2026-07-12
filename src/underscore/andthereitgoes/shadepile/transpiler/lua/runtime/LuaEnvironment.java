@@ -58,6 +58,7 @@ public abstract class LuaEnvironment extends LuaTable {
       }
       return new Object[]{Math.atan(y)};
     });
+    math.putFunction("atan2", (Object[] params) -> new Object[]{Math.atan2(LuaRuntime.assertDouble(params.length > 0 ? params[0] : null, "math.atan()", 1, runtime), LuaRuntime.assertDouble(params.length > 1 ? params[1] : null, "math.atan()", 2, runtime))});
     math.putFunction("ceil", (Object[] params) -> {
       Number n = LuaRuntime.assertNumber(params.length > 0 ? params[0] : null, "math.ceil()", 1, runtime);
       if (n instanceof Long l) return new Object[]{l};
