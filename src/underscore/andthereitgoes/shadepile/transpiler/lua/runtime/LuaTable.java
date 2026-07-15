@@ -244,7 +244,7 @@ public class LuaTable implements LuaTableOrUserdata {
     @Override
     public @NotNull Object getValue() { return value; }
     @Override
-    @Contract(value = "_ -> fail", pure = true)
+    @Contract(value = "_ -> fail")
     public Object setValue(Object value) { throw new UnsupportedOperationException(); }
   }
 }
